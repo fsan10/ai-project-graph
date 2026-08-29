@@ -131,6 +131,7 @@ test("new project creates Architect, Blueprint Draft, graph hierarchy and stable
   assert.equal(state.conversations[0].type, "architect");
   assert.equal(state.nodes.length, 3);
   assert.equal(new Set(state.nodes.map((node) => node.stableKey)).size, 3);
+  assert.deepEqual(validateGraph(state).filter((item) => item.severity === "error"), []);
   assert.equal(state.edges.every((edge) => edge.type === "contains"), true);
 });
 

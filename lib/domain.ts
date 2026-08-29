@@ -463,7 +463,10 @@ export function validateGraph(state: ProjectState): Diagnostic[] {
 
 export function createProject(input: { name: string; goal: string; workspacePath: string; repositoryUrl: string; mode: ProjectState["project"]["mode"]; modules?: string[] }): ProjectState {
   const id = input.name.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || `project-${Date.now()}`;
-  const modules = (input.modules?.length ? input.modules : ["身份认证", "业务模块", "数据存储"]).map((name, index) => ({ name, id: `${id}.${name.toLowerCase().replace(/[^a-z0-9\u4e00-\u9fff]+/g, "-") || `module-${index + 1}`}` }));
+  const modules = (input.modules?.length ? input.modules : ["身份认证", "业务模块", "数据存储"]).map((name, index) => {
+    const asciiKey = name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+    return { name, id: `${id}.${asciiKey || `module-${index + 1}`}` };
+  });
   const root = seedNode({ id, name: input.name.trim(), type: "system", x: 90, y: 300, status: "in_progress", implementationStatus: "active" });
   const nodes = [root, ...modules.map((module, index) => seedNode({ id: module.id, name: module.name, type: index === modules.length - 1 ? "database" : "domain", parentId: id, x: 430 + (index % 2) * 320, y: 100 + Math.floor(index / 2) * 250 }))];
   const edges = modules.map((module) => ({ id: `edge-${module.id}`, stableKey: `${id}.contains.${module.id}`, sourceNodeId: id, targetNodeId: module.id, type: "contains" as EdgeType, label: "包含", layer: "structure" as const }));
