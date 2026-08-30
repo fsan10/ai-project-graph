@@ -47,7 +47,18 @@ test("emits the Project Graph canvas, status, scrolling, and responsive styles",
   assert.match(css, /\.connection-handle/);
   assert.match(css, /\.edge-inspector/);
   assert.match(css, /\.graph-canvas\.space-pan/);
+  assert.match(css, /\.canvas-world\s*\{[^}]*pointer-events:\s*none/s);
+  assert.match(css, /\.open-left\s*\{[^}]*position:\s*static/s);
+  assert.match(css, /body[\s\S]*font-size:\s*14px/);
   assert.match(css, /@media\s*\((?:max-width:\s*900px|width<=900px)\)/);
+});
+
+test("uses one target-aware context menu and no hidden search shortcut", async () => {
+  const source = await readFile(path.join(root, "components/project-graph/ProjectGraphApp.tsx"), "utf8");
+  assert.equal((source.match(/<ContextMenu(?:\s|>)/g) ?? []).length, 1);
+  assert.match(source, /onContextMenuCapture/);
+  assert.match(source, /data-edge-id/);
+  assert.doesNotMatch(source, /<kbd>⌘K<\/kbd>/);
 });
 
 test("ships a Codex sidebar bridge with theme and host synchronization", async () => {

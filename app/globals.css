@@ -1762,3 +1762,217 @@ body {
     display: none;
   }
 }
+
+/* 统一事件命中层：透明世界层不再阻挡画布空白区域。 */
+.canvas-world {
+  pointer-events: none;
+}
+
+.graph-node {
+  pointer-events: auto;
+}
+
+.edge-group .edge-hit {
+  pointer-events: stroke;
+}
+
+/* Codex 风格的明暗主题表面。 */
+.open-left {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  position: static;
+  color: var(--text-secondary);
+  border-color: var(--border);
+  background: var(--surface-hover);
+}
+
+.open-left:hover {
+  color: var(--text-primary);
+  background: var(--surface-active);
+}
+
+.new-project,
+.rail-state-card,
+.editable-section textarea,
+.dependency-list > button,
+.conversation-cards > button,
+.evidence-row,
+.fact-grid > div,
+.native-select,
+.diagnostics-list article {
+  color: var(--text-secondary);
+  border-color: var(--border);
+  background: var(--surface-raised);
+}
+
+.new-project:hover,
+.rail-item:hover,
+.conversation-row:hover,
+.dependency-list > button:hover,
+.conversation-cards > button:hover {
+  color: var(--text-primary);
+  border-color: var(--border);
+  background: var(--surface-hover);
+}
+
+.rail-item.active {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--primary) 9%, var(--surface));
+}
+
+.rail-state-card {
+  background: var(--surface);
+}
+
+.rail-state-card > div,
+.rail-state-card p,
+.form-field > span,
+.form-field small,
+.section-heading,
+.section-heading small,
+.detail-status-row > span,
+.context-header small,
+.fact-grid dt,
+.timeline small,
+.timeline code,
+.empty-state,
+.empty-state p {
+  color: var(--text-tertiary);
+}
+
+.conversation-row strong,
+.dependency-list strong,
+.conversation-cards strong,
+.evidence-row strong,
+.context-header strong,
+.timeline strong,
+.fact-grid dd,
+.empty-state strong,
+.editable-section textarea {
+  color: var(--text-primary);
+}
+
+.conversation-row small,
+.dependency-list small,
+.conversation-cards small,
+.evidence-row small,
+.timeline p {
+  color: var(--text-secondary);
+}
+
+.context-header,
+.detail-hero,
+.detail-status-row,
+.detail-tabs > [data-slot="tabs-list"],
+.detail-section {
+  border-color: var(--border);
+}
+
+.context-code {
+  color: var(--text-secondary);
+  background: var(--surface-raised);
+}
+
+.native-select option {
+  color: var(--popover-foreground);
+  background: var(--popover);
+}
+
+.danger-item {
+  color: var(--destructive) !important;
+}
+
+/* 常用桌面应用字号层级：正文 14，辅助信息 12，标题 18。 */
+body,
+button,
+input,
+textarea,
+select {
+  font-size: 14px;
+}
+
+.brand-lockup strong,
+.project-crumb strong,
+.rail-item span,
+.conversation-row strong,
+.graph-node > strong,
+.dependency-list strong,
+.conversation-cards strong,
+.evidence-row strong,
+.context-header strong,
+.timeline strong,
+.empty-state strong,
+.form-field > span,
+.edge-inspector strong {
+  font-size: 14px;
+}
+
+.detail-hero h2 {
+  font-size: 18px;
+}
+
+.diagnostic-pill,
+.brand-lockup span,
+.project-crumb span,
+.rail-title-row,
+.rail-label,
+.rail-item em,
+.conversation-row small,
+.rail-state-card > div,
+.rail-state-card p,
+.search-box input,
+.zoom-value,
+.edge-group text,
+.node-top [data-slot="badge"],
+.graph-node > small,
+.node-bottom,
+.canvas-hint,
+.detail-hero [data-slot="badge"],
+.detail-hero code,
+.detail-status-row > span,
+.detail-status-row [data-slot="select-trigger"],
+.section-heading,
+.section-heading button,
+.dependency-list small,
+.conversation-cards small,
+.evidence-row small,
+.dependency-list [data-slot="badge"],
+.context-header small,
+.context-code,
+.timeline small,
+.timeline code,
+.fact-grid dt,
+.fact-grid dd,
+.empty-state p,
+.form-field small,
+.diagnostics-list article code {
+  font-size: 12px;
+}
+
+.rail-state-card p,
+.check-list,
+.timeline p,
+.native-select,
+.diagnostics-list article p,
+.lens-tabs [data-slot="tabs-trigger"],
+.detail-tabs [data-slot="tabs-trigger"],
+.canvas-context-menu [data-slot="context-menu-item"],
+.node-context-menu [data-slot="context-menu-item"],
+.node-context-menu [data-slot="context-menu-sub-trigger"],
+.edge-context-menu [data-slot="context-menu-item"],
+.edge-context-menu [data-slot="context-menu-sub-trigger"] {
+  font-size: 14px;
+}
+
+.canvas-context-menu,
+.node-context-menu,
+.edge-context-menu {
+  min-width: 220px;
+}
+
+@media (max-width: 620px) {
+  .lens-tabs [data-slot="tabs-trigger"] {
+    font-size: 0;
+  }
+}

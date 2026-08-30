@@ -33,5 +33,6 @@ test("renders the Chinese project graph working surface and final metadata", asy
   assert.match(html, /按住空格拖动画布/i);
   assert.match(html, /connection-handle/i);
   assert.match(html, /确认并完成/i);
+  assert.doesNotMatch(html, /⌘K/);
   assert.doesNotMatch(html, /codex-preview/i);
 });

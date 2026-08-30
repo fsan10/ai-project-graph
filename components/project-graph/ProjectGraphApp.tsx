@@ -39,11 +39,11 @@ import { Toaster } from "@/components/ui/sonner";
 import {
   EDGE_TYPES, NODE_STATUSES, NODE_TYPES, acceptNode, addEvidence, bindConversation,
   compileContext, confirmBlueprint, createEdge, createNode, createProject, createSeedState,
-  deleteEdge, moveNode, projectSnapshot, updateEdge, updateNode, updateNodeLayouts, validateGraph,
+  deleteEdges, moveNode, projectSnapshot, updateEdges, updateNode, updateNodeLayouts, validateGraph,
   type ArchitectureEdge, type ArchitectureNode, type Blueprint, type ConversationBinding,
   type EdgeType, type NodeStatus, type NodeType, type ProjectState,
 } from "@/lib/domain";
-import { nodesInMarquee, rangeSelection, rectFromPoints, type CanvasPoint } from "@/lib/canvas";
+import { edgesInMarquee, nodesInMarquee, rangeSelection, rectFromPoints, type CanvasPoint } from "@/lib/canvas";
 
 const LEGACY_STORAGE_KEY = "ai-project-graph:v1";
 const PROJECTS_STORAGE_KEY = "ai-project-graph:projects:v2";
@@ -95,6 +95,10 @@ const nodeIcons: Record<NodeType, typeof Box> = {
 type Lens = "architecture" | "dependency" | "progress" | "runtime" | "evidence";
 type Theme = "light" | "dark";
 type NodePositionMap = Record<string, { x: number; y: number }>;
+type ContextTarget =
+  | { kind: "canvas"; position: CanvasPoint }
+  | { kind: "node"; nodeId: string }
+  | { kind: "edge"; edgeId: string };
 
 interface DirectoryEntryLike {
   kind: "file" | "directory";
@@ -131,7 +135,7 @@ function normalizeState(value: unknown): ProjectState {
 function formatDate(value: string) {
   try {
     return new Intl.DateTimeFormat("zh-CN", {
-      month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+      month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZone: "UTC",
     }).format(new Date(value));
   } catch {
     return value;
@@ -179,7 +183,7 @@ export function ProjectGraphApp() {
   const [hydrated, setHydrated] = useState(false);
   const [selectedNodeId, setSelectedNodeId] = useState("auth.login");
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>(["auth.login"]);
-  const [selectedEdgeId, setSelectedEdgeId] = useState<string | null>(null);
+  const [selectedEdgeIds, setSelectedEdgeIds] = useState<string[]>([]);
   const [lens, setLens] = useState<Lens>("architecture");
   const [search, setSearch] = useState("");
   const [leftCollapsed, setLeftCollapsed] = useState(false);
@@ -198,6 +202,7 @@ export function ProjectGraphApp() {
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const [newNodePosition, setNewNodePosition] = useState<CanvasPoint | null>(null);
   const [conversationDefaultType, setConversationDefaultType] = useState<ConversationBinding["type"]>("implementation");
+  const [contextTarget, setContextTarget] = useState<ContextTarget | null>(null);
   const [dialogs, setDialogs] = useState({
     project: false, node: false, conversation: false, evidence: false,
     blueprint: false, diagnostics: false,
@@ -207,7 +212,9 @@ export function ProjectGraphApp() {
   const canvasRef = useRef<HTMLDivElement>(null);
   const stateRef = useRef(state);
   const viewRef = useRef(view);
+  const selectedEdgeIdsRef = useRef<string[]>([]);
   const selectionAnchorRef = useRef("auth.login");
+  const edgeSelectionAnchorRef = useRef<string | null>(null);
   const dragRef = useRef<{
     pointerX: number; pointerY: number; origins: NodePositionMap; latest: NodePositionMap; moved: boolean;
   } | null>(null);
@@ -215,7 +222,7 @@ export function ProjectGraphApp() {
     pointerX: number; pointerY: number; originX: number; originY: number;
   } | null>(null);
   const marqueeRef = useRef<{
-    start: CanvasPoint; current: CanvasPoint; additive: string[];
+    start: CanvasPoint; current: CanvasPoint; additiveNodes: string[]; additiveEdges: string[];
   } | null>(null);
   const connectionRef = useRef<{ sourceNodeId: string; start: CanvasPoint; end: CanvasPoint } | null>(null);
 
@@ -285,6 +292,10 @@ export function ProjectGraphApp() {
   }, [view]);
 
   useEffect(() => {
+    selectedEdgeIdsRef.current = selectedEdgeIds;
+  }, [selectedEdgeIds]);
+
+  useEffect(() => {
     const query = new URLSearchParams(window.location.search);
     const hostEmbedded = ["codex", "workbuddy", "deepseek-harness"].includes(query.get("host") ?? "");
     const queryTheme = query.get("theme");
@@ -331,12 +342,12 @@ export function ProjectGraphApp() {
 
   useEffect(() => {
     const move = (event: PointerEvent) => {
-      if (panRef.current) {
-        setView((current) => ({
-          ...current,
-          x: panRef.current!.originX + event.clientX - panRef.current!.pointerX,
-          y: panRef.current!.originY + event.clientY - panRef.current!.pointerY,
-        }));
+      const pan = panRef.current;
+      if (pan) {
+        const x = pan.originX + event.clientX - pan.pointerX;
+        const y = pan.originY + event.clientY - pan.pointerY;
+        if (!Number.isFinite(x) || !Number.isFinite(y)) return;
+        setView((current) => ({ ...current, x, y }));
         return;
       }
       if (dragRef.current) {
@@ -353,10 +364,14 @@ export function ProjectGraphApp() {
         const point = clientToWorld(event.clientX, event.clientY);
         marqueeRef.current.current = point;
         setMarquee({ start: marqueeRef.current.start, current: point });
-        const ids = nodesInMarquee(stateRef.current.nodes, rectFromPoints(marqueeRef.current.start, point));
-        const next = [...new Set([...marqueeRef.current.additive, ...ids])];
-        setSelectedNodeIds(next);
-        setSelectedNodeId(next.at(-1) ?? "");
+        const selectionRect = rectFromPoints(marqueeRef.current.start, point);
+        const nodeIds = nodesInMarquee(stateRef.current.nodes, selectionRect);
+        const edgeIds = edgesInMarquee(stateRef.current.edges, stateRef.current.nodes, selectionRect);
+        const nextNodes = [...new Set([...marqueeRef.current.additiveNodes, ...nodeIds])];
+        const nextEdges = [...new Set([...marqueeRef.current.additiveEdges, ...edgeIds])];
+        setSelectedNodeIds(nextNodes);
+        setSelectedNodeId(nextNodes.at(-1) ?? "");
+        setSelectedEdgeIds(nextEdges);
         return;
       }
       if (connectionRef.current) {
@@ -369,11 +384,18 @@ export function ProjectGraphApp() {
       if (dragRef.current) {
         const drag = dragRef.current;
         if (drag.moved) {
-          setState((current) => updateNodeLayouts(
-            current,
-            Object.entries(drag.latest).map(([id, position]) => ({ id, ...position })),
-            current.revision,
-          ));
+          setState((current) => {
+            try {
+              return updateNodeLayouts(
+                current,
+                Object.entries(drag.latest).map(([id, position]) => ({ id, ...position })),
+                current.revision,
+              );
+            } catch (error) {
+              toast.error(error instanceof Error ? error.message : "无法保存节点位置");
+              return current;
+            }
+          });
         }
       }
       if (connectionRef.current) {
@@ -403,6 +425,17 @@ export function ProjectGraphApp() {
       setMarquee(null);
       setConnectionPreview(null);
     };
+    const cancel = () => {
+      dragRef.current = null;
+      panRef.current = null;
+      marqueeRef.current = null;
+      connectionRef.current = null;
+      setIsDraggingNodes(false);
+      setIsPanning(false);
+      setDragPreview({});
+      setMarquee(null);
+      setConnectionPreview(null);
+    };
     const keyDown = (event: KeyboardEvent) => {
       if (isTypingTarget(event.target)) return;
       if (event.code === "Space") {
@@ -414,17 +447,28 @@ export function ProjectGraphApp() {
         const ids = stateRef.current.nodes.map((node) => node.id);
         setSelectedNodeIds(ids);
         setSelectedNodeId(ids.at(-1) ?? "");
+        setSelectedEdgeIds(stateRef.current.edges.map((edge) => edge.id));
       }
-      if ((event.key === "Delete" || event.key === "Backspace") && selectedEdgeId) {
+      const edgeIds = selectedEdgeIdsRef.current;
+      if ((event.key === "Delete" || event.key === "Backspace") && edgeIds.length) {
         event.preventDefault();
-        setState((current) => deleteEdge(current, selectedEdgeId, current.revision));
-        setSelectedEdgeId(null);
-        toast.success("连线已删除");
+        setState((current) => {
+          try {
+            return deleteEdges(current, edgeIds, current.revision);
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : "无法删除连线");
+            return current;
+          }
+        });
+        setSelectedEdgeIds([]);
+        toast.success(`已删除 ${edgeIds.length} 条连线`);
       }
       if (event.key === "Escape") {
         setConnectMode(false);
         setConnectSource(null);
-        setSelectedEdgeId(null);
+        setSelectedEdgeIds([]);
+        setSelectedNodeIds([]);
+        setSelectedNodeId("");
         setMarquee(null);
       }
     };
@@ -433,24 +477,39 @@ export function ProjectGraphApp() {
     };
     const blur = () => {
       setSpacePressed(false);
-      setIsPanning(false);
+      cancel();
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", cancel);
     window.addEventListener("keydown", keyDown);
     window.addEventListener("keyup", keyUp);
     window.addEventListener("blur", blur);
     return () => {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", cancel);
       window.removeEventListener("keydown", keyDown);
       window.removeEventListener("keyup", keyUp);
       window.removeEventListener("blur", blur);
     };
-  }, [connectType, selectedEdgeId]);
+  }, [connectType]);
 
   const selectedNode = state.nodes.find((node) => node.id === selectedNodeId) ?? null;
-  const selectedEdge = state.edges.find((edge) => edge.id === selectedEdgeId) ?? null;
+  const selectedEdges = state.edges.filter((edge) => selectedEdgeIds.includes(edge.id));
+  const selectedEdge = selectedEdges.at(-1) ?? null;
+  const selectedEdgeType = selectedEdges.length && selectedEdges.every((edge) => edge.type === selectedEdges[0].type)
+    ? selectedEdges[0].type
+    : undefined;
+  const contextNode = contextTarget?.kind === "node"
+    ? state.nodes.find((node) => node.id === contextTarget.nodeId) ?? null
+    : null;
+  const contextEdge = contextTarget?.kind === "edge"
+    ? state.edges.find((edge) => edge.id === contextTarget.edgeId) ?? null
+    : null;
+  const contextEdgeIds = contextEdge
+    ? selectedEdgeIds.includes(contextEdge.id) ? selectedEdgeIds : [contextEdge.id]
+    : [];
   const diagnostics = useMemo(() => validateGraph(state), [state]);
   const snapshot = useMemo(() => projectSnapshot(state), [state]);
   const progress = Math.round(
@@ -487,7 +546,7 @@ export function ProjectGraphApp() {
     setState(next);
     setSelectedNodeId(next.nodes[0]?.id ?? "");
     setSelectedNodeIds(next.nodes[0] ? [next.nodes[0].id] : []);
-    setSelectedEdgeId(null);
+    setSelectedEdgeIds([]);
     selectionAnchorRef.current = next.nodes[0]?.id ?? "";
     setBlueprintDraft(next.blueprint);
     setView({ x: 24, y: 28, zoom: 0.78 });
@@ -515,8 +574,27 @@ export function ProjectGraphApp() {
     }
     setSelectedNodeIds(next);
     setSelectedNodeId(next.includes(nodeId) ? nodeId : next.at(-1) ?? "");
-    setSelectedEdgeId(null);
+    setSelectedEdgeIds([]);
     return next;
+  };
+
+  const selectEdgeForPointer = (event: React.PointerEvent, edgeId: string) => {
+    const order = state.edges.map((edge) => edge.id);
+    let next: string[];
+    if (event.shiftKey) {
+      next = rangeSelection(order, edgeSelectionAnchorRef.current, edgeId);
+    } else if (event.ctrlKey || event.metaKey) {
+      next = selectedEdgeIds.includes(edgeId)
+        ? selectedEdgeIds.filter((id) => id !== edgeId)
+        : [...selectedEdgeIds, edgeId];
+      edgeSelectionAnchorRef.current = edgeId;
+    } else {
+      next = selectedEdgeIds.includes(edgeId) ? selectedEdgeIds : [edgeId];
+      edgeSelectionAnchorRef.current = edgeId;
+    }
+    setSelectedEdgeIds(next);
+    setSelectedNodeIds([]);
+    setSelectedNodeId("");
   };
 
   const startNodeDrag = (event: React.PointerEvent, node: ArchitectureNode) => {
@@ -599,7 +677,7 @@ export function ProjectGraphApp() {
     if (!connectMode) {
       setSelectedNodeId(nodeId);
       setSelectedNodeIds([nodeId]);
-      setSelectedEdgeId(null);
+      setSelectedEdgeIds([]);
       return;
     }
     if (!connectSource) {
@@ -794,18 +872,16 @@ export function ProjectGraphApp() {
           </div>
         </aside>
 
-        {leftCollapsed ? (
-          <button className="open-left" onClick={() => setLeftCollapsed(false)} aria-label="展开项目栏">
-            <Layers3 size={16} />
-          </button>
-        ) : null}
-
         <section className="canvas-column">
           <div className="canvas-toolbar">
+            {leftCollapsed ? (
+              <button className="open-left" onClick={() => setLeftCollapsed(false)} aria-label="展开项目栏">
+                <Layers3 size={16} />
+              </button>
+            ) : null}
             <div className="search-box">
               <Search size={15} />
               <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索节点、接口、文件或会话" />
-              <kbd>⌘K</kbd>
             </div>
             <div className="toolbar-divider" />
             <Dialog open={dialogs.node} onOpenChange={(value) => {
@@ -893,7 +969,9 @@ export function ProjectGraphApp() {
             }><Maximize2 /></Button>
           </div>
 
-          <ContextMenu>
+          <ContextMenu onOpenChange={(open) => {
+            if (!open) setContextTarget(null);
+          }}>
             <ContextMenuTrigger asChild>
               <div
                 className={cx(
@@ -904,6 +982,32 @@ export function ProjectGraphApp() {
                   isDraggingNodes && "dragging-nodes",
                 )}
                 ref={canvasRef}
+                onContextMenuCapture={(event) => {
+                  const target = event.target instanceof Element ? event.target : null;
+                  const nodeElement = target?.closest<HTMLElement>("[data-node-id]");
+                  const edgeElement = target?.closest<SVGPathElement>("[data-edge-id]");
+                  if (nodeElement?.dataset.nodeId) {
+                    const nodeId = nodeElement.dataset.nodeId;
+                    setContextTarget({ kind: "node", nodeId });
+                    if (!selectedNodeIds.includes(nodeId)) {
+                      setSelectedNodeIds([nodeId]);
+                      setSelectedNodeId(nodeId);
+                    }
+                    setSelectedEdgeIds([]);
+                    return;
+                  }
+                  if (edgeElement?.dataset.edgeId) {
+                    const edgeId = edgeElement.dataset.edgeId;
+                    setContextTarget({ kind: "edge", edgeId });
+                    if (!selectedEdgeIds.includes(edgeId)) setSelectedEdgeIds([edgeId]);
+                    setSelectedNodeIds([]);
+                    setSelectedNodeId("");
+                    return;
+                  }
+                  const position = clientToWorld(event.clientX, event.clientY);
+                  setNewNodePosition(position);
+                  setContextTarget({ kind: "canvas", position });
+                }}
                 onPointerDownCapture={(event) => {
                   if (!spacePressed || event.button !== 0) return;
                   event.preventDefault();
@@ -915,18 +1019,23 @@ export function ProjectGraphApp() {
                 }}
                 onPointerDown={(event) => {
                   if (event.button !== 0 || spacePressed) return;
-                  if (event.target !== event.currentTarget && !(event.target as HTMLElement).closest(".canvas-grid")) return;
+                  const target = event.target instanceof Element ? event.target : null;
+                  if (target?.closest("[data-node-id], .edge-hit, .edge-inspector")) return;
                   const start = clientToWorld(event.clientX, event.clientY);
-                  const additive = event.ctrlKey || event.metaKey ? selectedNodeIds : [];
-                  marqueeRef.current = { start, current: start, additive };
+                  const additive = event.ctrlKey || event.metaKey || event.shiftKey;
+                  marqueeRef.current = {
+                    start,
+                    current: start,
+                    additiveNodes: additive ? selectedNodeIds : [],
+                    additiveEdges: additive ? selectedEdgeIds : [],
+                  };
                   setMarquee({ start, current: start });
-                  setSelectedEdgeId(null);
-                  if (!additive.length) {
+                  if (!additive) {
                     setSelectedNodeIds([]);
                     setSelectedNodeId("");
+                    setSelectedEdgeIds([]);
                   }
                 }}
-                onContextMenu={(event) => setNewNodePosition(clientToWorld(event.clientX, event.clientY))}
                 onWheel={(event) => {
                   event.preventDefault();
                   const rect = canvasRef.current?.getBoundingClientRect();
@@ -969,15 +1078,14 @@ export function ProjectGraphApp() {
                       const labelX = (x1 + x2) / 2;
                       const labelY = (y1 + y2) / 2 - 7;
                       return (
-                        <g key={edge.id} className={cx("edge-group", selectedEdgeId === edge.id && "selected")}>
+                        <g key={edge.id} className={cx("edge-group", selectedEdgeIds.includes(edge.id) && "selected")}>
                           <path
                             className="edge-hit"
+                            data-edge-id={edge.id}
                             d={path}
                             onPointerDown={(event) => {
                               event.stopPropagation();
-                              setSelectedEdgeId(edge.id);
-                              setSelectedNodeIds([]);
-                              setSelectedNodeId("");
+                              selectEdgeForPointer(event, edge.id);
                             }}
                           />
                           <path className="edge-line" d={path} stroke={edgeColor(edge)} markerEnd="url(#arrow)" />
@@ -998,104 +1106,129 @@ export function ProjectGraphApp() {
                     return <div className="selection-marquee" style={{ left: rect.x, top: rect.y, width: rect.width, height: rect.height }} />;
                   })() : null}
                   {state.nodes.map((node) => (
-                    <ContextMenu key={node.id} onOpenChange={(open) => {
-                      if (open && !selectedNodeIds.includes(node.id)) {
-                        setSelectedNodeIds([node.id]);
-                        setSelectedNodeId(node.id);
-                        setSelectedEdgeId(null);
-                      }
-                    }}>
-                      <ContextMenuTrigger asChild>
-                        <GraphNode
-                          node={node}
-                          selected={selectedNodeIds.includes(node.id)}
-                          matched={matches.has(node.id)}
-                          connecting={connectSource === node.id}
-                          dragging={isDraggingNodes && selectedNodeIds.includes(node.id)}
-                          position={dragPreview[node.id] ?? node}
-                          evidenceCount={state.evidence.filter((item) =>
-                            item.nodeId === node.id && item.verificationStatus === "verified",
-                          ).length}
-                          onClick={() => {
-                            if (connectMode) chooseNode(node.id);
-                          }}
-                          onPointerDown={(event) => startNodeDrag(event, node)}
-                          onStartConnection={(event, side) => startConnection(event, node, side)}
-                        />
-                      </ContextMenuTrigger>
-                      <ContextMenuContent className="node-context-menu">
-                        <ContextMenuLabel>{node.name}</ContextMenuLabel>
-                        <ContextMenuItem onSelect={() => {
-                          setConversationDefaultType("implementation");
-                          setDialog("conversation", true);
-                        }}><MessageSquarePlus />新建实现会话</ContextMenuItem>
-                        <ContextMenuItem onSelect={() => {
-                          setConversationDefaultType("side_chat");
-                          setDialog("conversation", true);
-                        }}><Bot />新建临时会话</ContextMenuItem>
-                        <ContextMenuSeparator />
-                        <ContextMenuItem onSelect={() => openNodeEditor(node.id)}><Pencil />编辑节点</ContextMenuItem>
-                        <ContextMenuItem onSelect={() => setDialog("evidence", true)}><ShieldCheck />添加代码证据</ContextMenuItem>
-                        <ContextMenuItem onSelect={() => {
-                          setConnectMode(true);
-                          setConnectSource(node.id);
-                          toast.info("请选择关系的目标节点，或从节点连接点拖动");
-                        }}><Link2 />从此节点创建关系</ContextMenuItem>
-                        <ContextMenuSub>
-                          <ContextMenuSubTrigger><Activity />设置节点状态</ContextMenuSubTrigger>
-                          <ContextMenuSubContent>
-                            {NODE_STATUSES.filter((status) => status !== "done").map((status) => (
-                              <ContextMenuItem key={status} disabled={node.status === status} onSelect={() => run(
-                                () => moveNode(state, node.id, status, state.revision, "agent"),
-                                "状态已更新为" + statusMeta[status].label,
-                              )}>{statusMeta[status].label}</ContextMenuItem>
-                            ))}
-                          </ContextMenuSubContent>
-                        </ContextMenuSub>
-                        <ContextMenuSeparator />
-                        <ContextMenuItem onSelect={() => run(
-                          () => updateNode(state, node.id, { layoutLocked: !node.layoutLocked }, state.revision),
-                          node.layoutLocked ? "节点位置已解锁" : "节点位置已锁定",
-                        )}><LockKeyhole />{node.layoutLocked ? "解锁节点位置" : "锁定节点位置"}</ContextMenuItem>
-                        <ContextMenuItem onSelect={() => void navigator.clipboard.writeText(node.stableKey)}><Copy />复制稳定标识</ContextMenuItem>
-                      </ContextMenuContent>
-                    </ContextMenu>
+                    <GraphNode
+                      key={node.id}
+                      node={node}
+                      selected={selectedNodeIds.includes(node.id)}
+                      matched={matches.has(node.id)}
+                      connecting={connectSource === node.id}
+                      dragging={isDraggingNodes && selectedNodeIds.includes(node.id)}
+                      position={dragPreview[node.id] ?? node}
+                      evidenceCount={state.evidence.filter((item) =>
+                        item.nodeId === node.id && item.verificationStatus === "verified",
+                      ).length}
+                      onClick={() => {
+                        if (connectMode) chooseNode(node.id);
+                      }}
+                      onPointerDown={(event) => startNodeDrag(event, node)}
+                      onStartConnection={(event, side) => startConnection(event, node, side)}
+                    />
                   ))}
                 </div>
                 {selectedEdge ? (
                   <div className="edge-inspector">
-                    <span><Link2 />关系</span>
-                    <strong>{state.nodes.find((node) => node.id === selectedEdge.sourceNodeId)?.name} → {state.nodes.find((node) => node.id === selectedEdge.targetNodeId)?.name}</strong>
-                    <Select value={selectedEdge.type} onValueChange={(value) => run(
-                      () => updateEdge(state, selectedEdge.id, value as EdgeType, state.revision),
-                      "关系类型已更新",
+                    <span><Link2 />{selectedEdges.length > 1 ? `${selectedEdges.length} 条关系` : "关系"}</span>
+                    <strong>{selectedEdges.length > 1
+                      ? "批量修改所选连线"
+                      : `${state.nodes.find((node) => node.id === selectedEdge.sourceNodeId)?.name} → ${state.nodes.find((node) => node.id === selectedEdge.targetNodeId)?.name}`}</strong>
+                    <Select value={selectedEdgeType} onValueChange={(value) => run(
+                      () => updateEdges(state, selectedEdgeIds, value as EdgeType, state.revision),
+                      `已更新 ${selectedEdges.length} 条关系`,
                     )}>
-                      <SelectTrigger size="sm"><SelectValue /></SelectTrigger>
+                      <SelectTrigger size="sm"><SelectValue placeholder="批量设置关系" /></SelectTrigger>
                       <SelectContent>{EDGE_TYPES.map((type) => <SelectItem key={type} value={type}>{edgeTypeLabels[type]}</SelectItem>)}</SelectContent>
                     </Select>
-                    <Button size="icon-sm" variant="ghost" aria-label="删除连线" onClick={() => {
-                      if (run(() => deleteEdge(state, selectedEdge.id, state.revision), "连线已删除")) setSelectedEdgeId(null);
+                    <Button size="icon-sm" variant="ghost" aria-label="删除所选连线" onClick={() => {
+                      if (run(() => deleteEdges(state, selectedEdgeIds, state.revision), `已删除 ${selectedEdges.length} 条连线`)) setSelectedEdgeIds([]);
                     }}><Trash2 /></Button>
                   </div>
                 ) : null}
                 <div className="canvas-hint"><MousePointer2 size={13} />拖动空白处框选 · Ctrl 单击多选 · Shift 单击连续选择 · 按住空格拖动画布</div>
               </div>
             </ContextMenuTrigger>
-            <ContextMenuContent className="canvas-context-menu">
-              <ContextMenuLabel>画布操作</ContextMenuLabel>
-              <ContextMenuItem onSelect={() => openNodeEditor(null, newNodePosition ?? undefined)}><Plus />在此新建节点</ContextMenuItem>
-              <ContextMenuItem onSelect={() => {
-                const ids = state.nodes.map((node) => node.id);
-                setSelectedNodeIds(ids);
-                setSelectedNodeId(ids.at(-1) ?? "");
-              }}><MousePointer2 />选择全部节点<ContextMenuShortcut>Ctrl A</ContextMenuShortcut></ContextMenuItem>
-              <ContextMenuSeparator />
-              <ContextMenuItem onSelect={() => setView({ x: 24, y: 28, zoom: 0.78 })}><Maximize2 />重置视图</ContextMenuItem>
-              <ContextMenuItem onSelect={() => {
-                setBlueprintDraft(state.blueprint);
-                setDialog("blueprint", true);
-              }}><Sparkles />打开项目蓝图</ContextMenuItem>
-              <ContextMenuItem onSelect={() => setDialog("diagnostics", true)}><ShieldCheck />运行图谱诊断</ContextMenuItem>
+            <ContextMenuContent className={cx(
+              contextNode && "node-context-menu",
+              contextEdge && "edge-context-menu",
+              !contextNode && !contextEdge && "canvas-context-menu",
+            )}>
+              {contextNode ? (
+                <>
+                  <ContextMenuLabel>{contextNode.name}</ContextMenuLabel>
+                  <ContextMenuItem onSelect={() => {
+                    setConversationDefaultType("implementation");
+                    setDialog("conversation", true);
+                  }}><MessageSquarePlus />新建实现会话</ContextMenuItem>
+                  <ContextMenuItem onSelect={() => {
+                    setConversationDefaultType("side_chat");
+                    setDialog("conversation", true);
+                  }}><Bot />新建临时会话</ContextMenuItem>
+                  <ContextMenuSeparator />
+                  <ContextMenuItem onSelect={() => openNodeEditor(contextNode.id)}><Pencil />编辑节点</ContextMenuItem>
+                  <ContextMenuItem onSelect={() => setDialog("evidence", true)}><ShieldCheck />添加代码证据</ContextMenuItem>
+                  <ContextMenuItem onSelect={() => {
+                    setConnectMode(true);
+                    setConnectSource(contextNode.id);
+                    toast.info("请选择关系的目标节点，或从节点连接点拖动");
+                  }}><Link2 />从此节点创建关系</ContextMenuItem>
+                  <ContextMenuSub>
+                    <ContextMenuSubTrigger><Activity />设置节点状态</ContextMenuSubTrigger>
+                    <ContextMenuSubContent>
+                      {NODE_STATUSES.filter((status) => status !== "done").map((status) => (
+                        <ContextMenuItem key={status} disabled={contextNode.status === status} onSelect={() => run(
+                          () => moveNode(state, contextNode.id, status, state.revision, "agent"),
+                          "状态已更新为" + statusMeta[status].label,
+                        )}>{statusMeta[status].label}</ContextMenuItem>
+                      ))}
+                    </ContextMenuSubContent>
+                  </ContextMenuSub>
+                  <ContextMenuSeparator />
+                  <ContextMenuItem onSelect={() => run(
+                    () => updateNode(state, contextNode.id, { layoutLocked: !contextNode.layoutLocked }, state.revision),
+                    contextNode.layoutLocked ? "节点位置已解锁" : "节点位置已锁定",
+                  )}><LockKeyhole />{contextNode.layoutLocked ? "解锁节点位置" : "锁定节点位置"}</ContextMenuItem>
+                  <ContextMenuItem onSelect={() => void navigator.clipboard.writeText(contextNode.stableKey)}><Copy />复制稳定标识</ContextMenuItem>
+                </>
+              ) : contextEdge ? (
+                <>
+                  <ContextMenuLabel>{contextEdgeIds.length > 1 ? `已选择 ${contextEdgeIds.length} 条关系` : "连线操作"}</ContextMenuLabel>
+                  <ContextMenuSub>
+                    <ContextMenuSubTrigger><Link2 />设置关系类型</ContextMenuSubTrigger>
+                    <ContextMenuSubContent>
+                      {EDGE_TYPES.map((type) => (
+                        <ContextMenuItem key={type} onSelect={() => run(
+                          () => updateEdges(state, contextEdgeIds, type, state.revision),
+                          `已更新 ${contextEdgeIds.length} 条关系`,
+                        )}>{edgeTypeLabels[type]}</ContextMenuItem>
+                      ))}
+                    </ContextMenuSubContent>
+                  </ContextMenuSub>
+                  <ContextMenuItem onSelect={() => void navigator.clipboard.writeText(contextEdge.stableKey)}><Copy />复制关系标识</ContextMenuItem>
+                  <ContextMenuSeparator />
+                  <ContextMenuItem className="danger-item" onSelect={() => {
+                    if (run(() => deleteEdges(state, contextEdgeIds, state.revision), `已删除 ${contextEdgeIds.length} 条连线`)) {
+                      setSelectedEdgeIds([]);
+                    }
+                  }}><Trash2 />删除所选连线</ContextMenuItem>
+                </>
+              ) : (
+                <>
+                  <ContextMenuLabel>画布操作</ContextMenuLabel>
+                  <ContextMenuItem onSelect={() => openNodeEditor(null, newNodePosition ?? undefined)}><Plus />在此新建节点</ContextMenuItem>
+                  <ContextMenuItem onSelect={() => {
+                    const ids = state.nodes.map((node) => node.id);
+                    setSelectedNodeIds(ids);
+                    setSelectedNodeId(ids.at(-1) ?? "");
+                    setSelectedEdgeIds(state.edges.map((edge) => edge.id));
+                  }}><MousePointer2 />选择全部节点和连线<ContextMenuShortcut>Ctrl A</ContextMenuShortcut></ContextMenuItem>
+                  <ContextMenuSeparator />
+                  <ContextMenuItem onSelect={() => setView({ x: 24, y: 28, zoom: 0.78 })}><Maximize2 />重置视图</ContextMenuItem>
+                  <ContextMenuItem onSelect={() => {
+                    setBlueprintDraft(state.blueprint);
+                    setDialog("blueprint", true);
+                  }}><Sparkles />打开项目蓝图</ContextMenuItem>
+                  <ContextMenuItem onSelect={() => setDialog("diagnostics", true)}><ShieldCheck />运行图谱诊断</ContextMenuItem>
+                </>
+              )}
             </ContextMenuContent>
           </ContextMenu>
 

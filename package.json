@@ -1,6 +1,20 @@
 {
   "name": "ai-project-graph",
   "version": "0.1.0",
+  "description": "以软件架构为中心组织 AI 编程项目、上下文、任务、会话与代码证据的可视化工作台",
+  "license": "MIT",
+  "homepage": "https://ai-project-graph.jz1234da.chatgpt.site",
+  "keywords": [
+    "ai",
+    "codex",
+    "software-architecture",
+    "project-management",
+    "task-management",
+    "knowledge-graph",
+    "developer-tools",
+    "react",
+    "typescript"
+  ],
   "private": true,
   "engines": {
     "node": ">=22.13.0"

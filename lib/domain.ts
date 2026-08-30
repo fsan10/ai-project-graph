@@ -393,29 +393,49 @@ export function createEdge(state: ProjectState, sourceNodeId: string, targetNode
 }
 
 export function updateEdge(state: ProjectState, edgeId: string, type: EdgeType, expectedRevision: number) {
+  return updateEdges(state, [edgeId], type, expectedRevision);
+}
+
+export function updateEdges(state: ProjectState, edgeIds: string[], type: EdgeType, expectedRevision: number) {
   assertRevision(state, expectedRevision);
   const next = clone(state);
-  const edge = next.edges.find((item) => item.id === edgeId);
-  if (!edge) throw new DomainError("EDGE_NOT_FOUND", `连线 ${edgeId} 不存在。`);
-  if (next.edges.some((item) => item.id !== edgeId && item.sourceNodeId === edge.sourceNodeId && item.targetNodeId === edge.targetNodeId && item.type === type)) {
-    throw new DomainError("DUPLICATE_EDGE", "相同关系已存在。");
+  const selected = new Set(edgeIds);
+  if (!selected.size) throw new DomainError("EDGE_REQUIRED", "请至少选择一条连线。");
+  if ([...selected].some((edgeId) => !next.edges.some((item) => item.id === edgeId))) {
+    throw new DomainError("EDGE_NOT_FOUND", "所选连线中包含不存在的连线。");
   }
-  edge.type = type;
-  edge.label = edgeLabels[type];
-  edge.stableKey = `${edge.sourceNodeId}.${type}.${edge.targetNodeId}`;
-  edge.layer = type === "contains"
-    ? "structure"
-    : ["calls", "reads", "writes", "produces", "consumes", "publishes", "subscribes", "authenticates"].includes(type)
-      ? "runtime"
-      : "execution";
+  const keys = new Set<string>();
+  for (const edge of next.edges) {
+    const nextType = selected.has(edge.id) ? type : edge.type;
+    const key = `${edge.sourceNodeId}.${nextType}.${edge.targetNodeId}`;
+    if (keys.has(key)) throw new DomainError("DUPLICATE_EDGE", "批量修改会产生重复关系。");
+    keys.add(key);
+    if (!selected.has(edge.id)) continue;
+    edge.type = type;
+    edge.label = edgeLabels[type];
+    edge.stableKey = key;
+    edge.layer = type === "contains"
+      ? "structure"
+      : ["calls", "reads", "writes", "produces", "consumes", "publishes", "subscribes", "authenticates"].includes(type)
+        ? "runtime"
+        : "execution";
+  }
   return bump(next);
 }
 
 export function deleteEdge(state: ProjectState, edgeId: string, expectedRevision: number) {
+  return deleteEdges(state, [edgeId], expectedRevision);
+}
+
+export function deleteEdges(state: ProjectState, edgeIds: string[], expectedRevision: number) {
   assertRevision(state, expectedRevision);
-  if (!state.edges.some((item) => item.id === edgeId)) throw new DomainError("EDGE_NOT_FOUND", `连线 ${edgeId} 不存在。`);
+  const selected = new Set(edgeIds);
+  if (!selected.size) throw new DomainError("EDGE_REQUIRED", "请至少选择一条连线。");
+  if ([...selected].some((edgeId) => !state.edges.some((item) => item.id === edgeId))) {
+    throw new DomainError("EDGE_NOT_FOUND", "所选连线中包含不存在的连线。");
+  }
   const next = clone(state);
-  next.edges = next.edges.filter((item) => item.id !== edgeId);
+  next.edges = next.edges.filter((item) => !selected.has(item.id));
   return bump(next);
 }
 

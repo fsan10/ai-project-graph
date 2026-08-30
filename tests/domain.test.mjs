@@ -15,7 +15,9 @@ import {
   moveNode,
   projectSnapshot,
   deleteEdge,
+  deleteEdges,
   updateEdge,
+  updateEdges,
   updateNodeLayouts,
   updateNodeLayout,
   validateGraph,
@@ -178,4 +180,16 @@ test("an edge relationship can be edited and deleted without changing its id", (
   assert.equal(edge.id, edgeId);
   const deleted = deleteEdge(updated, edgeId, updated.revision);
   assert.equal(deleted.edges.some((item) => item.id === edgeId), false);
+});
+
+test("multiple selected edges update and delete in one optimistic revision", () => {
+  const state = createSeedState();
+  const edgeIds = state.edges.slice(0, 2).map((edge) => edge.id);
+  const updated = updateEdges(state, edgeIds, "related", state.revision);
+  assert.equal(updated.revision, state.revision + 1);
+  assert.equal(updated.edges.filter((edge) => edgeIds.includes(edge.id)).every((edge) => edge.type === "related"), true);
+
+  const deleted = deleteEdges(updated, edgeIds, updated.revision);
+  assert.equal(deleted.revision, updated.revision + 1);
+  assert.equal(deleted.edges.some((edge) => edgeIds.includes(edge.id)), false);
 });

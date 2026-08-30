@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { nodesInMarquee, rangeSelection, rectFromPoints } from "../lib/canvas.ts";
+import { edgesInMarquee, nodesInMarquee, rangeSelection, rectFromPoints } from "../lib/canvas.ts";
 
 test("marquee selection works in every drag direction", () => {
   const nodes = [
@@ -16,4 +16,20 @@ test("marquee selection works in every drag direction", () => {
 test("shift selection follows the stable node order", () => {
   assert.deepEqual(rangeSelection(["a", "b", "c", "d"], "b", "d"), ["b", "c", "d"]);
   assert.deepEqual(rangeSelection(["a", "b", "c", "d"], "d", "b"), ["b", "c", "d"]);
+});
+
+test("marquee selects connecting edges from gaps and every canvas direction", () => {
+  const nodes = [
+    { id: "a", x: 20, y: 20, width: 80, height: 60 },
+    { id: "b", x: 260, y: 220, width: 80, height: 60 },
+    { id: "c", x: 420, y: 20, width: 80, height: 60 },
+  ];
+  const edges = [
+    { id: "ab", sourceNodeId: "a", targetNodeId: "b" },
+    { id: "ac", sourceNodeId: "a", targetNodeId: "c" },
+  ];
+  const fromLowerGap = rectFromPoints({ x: 250, y: 240 }, { x: 140, y: 110 });
+  assert.deepEqual(edgesInMarquee(edges, nodes, fromLowerGap), ["ab"]);
+  const reversed = rectFromPoints({ x: 140, y: 110 }, { x: 250, y: 240 });
+  assert.deepEqual(edgesInMarquee(edges, nodes, reversed), ["ab"]);
 });
