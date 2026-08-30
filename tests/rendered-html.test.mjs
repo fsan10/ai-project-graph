@@ -29,7 +29,7 @@ test("renders the Project Graph working surface and final metadata", async () =>
   const html = await response.text();
   assert.match(html, /<title>AI Project Graph<\/title>/i);
   assert.match(html, /class="app-shell"/i);
-  assert.match(html, /Architecture-first AI Coding/i);
-  assert.match(html, /Accept &amp; Complete/i);
+  assert.match(html, /以架构为中心的 AI Coding 工作台/i);
+  assert.match(html, /确认并完成/i);
   assert.doesNotMatch(html, /codex-preview/i);
 });

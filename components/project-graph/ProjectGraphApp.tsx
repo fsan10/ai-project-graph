@@ -38,11 +38,40 @@ import {
 const STORAGE_KEY = "ai-project-graph:v1";
 
 const statusMeta: Record<NodeStatus, { label: string; short: string; className: string; dot: string }> = {
-  planned: { label: "Planned", short: "计划", className: "status-planned", dot: "#8292a8" },
-  in_progress: { label: "In Progress", short: "进行中", className: "status-progress", dot: "#20b8a6" },
-  in_review: { label: "In Review", short: "待验收", className: "status-review", dot: "#f2aa3d" },
-  done: { label: "Done", short: "已完成", className: "status-done", dot: "#68d391" },
-  blocked: { label: "Blocked", short: "阻塞", className: "status-blocked", dot: "#f87171" },
+  planned: { label: "计划中", short: "计划", className: "status-planned", dot: "#8292a8" },
+  in_progress: { label: "进行中", short: "进行中", className: "status-progress", dot: "#20b8a6" },
+  in_review: { label: "待验收", short: "待验收", className: "status-review", dot: "#f2aa3d" },
+  done: { label: "已完成", short: "已完成", className: "status-done", dot: "#68d391" },
+  blocked: { label: "已阻塞", short: "阻塞", className: "status-blocked", dot: "#f87171" },
+};
+
+const nodeTypeLabels: Record<NodeType, string> = {
+  system: "系统", domain: "领域", module: "模块", feature: "功能", service: "服务",
+  database: "数据库", queue: "队列", external: "外部系统", process: "流程",
+  data_pipeline: "数据管道", task: "任务",
+};
+
+const edgeTypeLabels: Record<EdgeType, string> = {
+  contains: "包含", depends_on: "依赖", blocks: "阻塞", calls: "调用", reads: "读取",
+  writes: "写入", produces: "产出", consumes: "消费", publishes: "发布",
+  subscribes: "订阅", authenticates: "认证", related: "关联",
+};
+
+const conversationTypeLabels: Record<ConversationBinding["type"], string> = {
+  architect: "架构设计", implementation: "实现", research: "研究", debug: "调试",
+  review: "评审", side_chat: "侧聊",
+};
+
+const projectModeLabels: Record<ProjectState["project"]["mode"], string> = {
+  greenfield: "新建项目（Greenfield）", existing: "现有仓库（Existing）", hybrid: "计划与现实并行（Hybrid）",
+};
+
+const blueprintStatusLabels: Record<Blueprint["status"], string> = {
+  draft: "草稿", confirmed: "已确认",
+};
+
+const layoutModeLabels: Record<ArchitectureNode["layoutMode"], string> = {
+  auto: "自动布局", confirmed_auto: "已确认自动布局", manual: "手动布局",
 };
 
 const nodeIcons: Record<NodeType, typeof Box> = {
@@ -58,12 +87,20 @@ function cx(...items: Array<string | false | null | undefined>) {
 }
 
 function normalizeState(value: unknown): ProjectState {
-  if (!value || typeof value !== "object") throw new Error("文件不是有效的 Project Graph。");
+  if (!value || typeof value !== "object") throw new Error("文件不是有效的 AI Project Graph 项目快照。");
   const state = value as ProjectState;
   if (!state.project?.id || !Array.isArray(state.nodes) || !Array.isArray(state.edges)) {
     throw new Error("缺少 project、nodes 或 edges。");
   }
-  return state;
+  return {
+    ...state,
+    blueprint: {
+      ...state.blueprint,
+      principles: state.blueprint.principles.map((item) => item === "Plan 与 Reality 分离" ? "计划与现实分离" : item),
+      acceptanceDefinition: state.blueprint.acceptanceDefinition.map((item) => item === "用户人工验收后才算 Done" ? "用户人工验收后才算已完成" : item),
+    },
+    checkpoints: state.checkpoints.map((item) => ({ ...item, acceptedBy: item.acceptedBy === "User" ? "用户" : item.acceptedBy })),
+  };
 }
 
 function formatDate(value: string) {
@@ -294,18 +331,18 @@ export function ProjectGraphApp() {
       <header className="topbar">
         <div className="brand-lockup">
           <div className="brand-mark"><Network size={18} /></div>
-          <div><strong>Project Graph</strong><span>Architecture-first AI Coding</span></div>
+          <div><strong>AI Project Graph</strong><span>以架构为中心的 AI Coding 工作台</span></div>
         </div>
         <div className="project-crumb">
           <span className="status-light" />
-          <div><strong>{state.project.name}</strong><span>{state.project.mode} · V{state.graphVersion}</span></div>
+          <div><strong>{state.project.name}</strong><span>{projectModeLabels[state.project.mode]} · 第 {state.graphVersion} 版</span></div>
           <ChevronDown size={14} />
         </div>
         <div className="top-actions">
-          <Badge variant="outline" className="revision-badge">rev {state.revision}</Badge>
+          <Badge variant="outline" className="revision-badge">修订 {state.revision}</Badge>
           <button className="diagnostic-pill" onClick={() => setDialog("diagnostics", true)}>
             {diagnostics.some((item) => item.severity === "error") ? <X size={13} /> : <Check size={13} />}
-            {diagnostics.length ? diagnostics.length + " diagnostics" : "Graph valid"}
+            {diagnostics.length ? diagnostics.length + " 个诊断项" : "图谱有效"}
           </button>
           <Button variant="ghost" size="sm" onClick={exportProject}><ArrowDownToLine />导出</Button>
           <Button variant="ghost" size="sm" onClick={() => importRef.current?.click()}><Upload />导入</Button>
@@ -316,21 +353,21 @@ export function ProjectGraphApp() {
           <Button size="sm" onClick={() => {
             setBlueprintDraft(state.blueprint);
             setDialog("blueprint", true);
-          }}><Sparkles />Blueprint</Button>
+          }}><Sparkles />项目蓝图（Blueprint）</Button>
         </div>
       </header>
 
       <section className={cx("workspace", leftCollapsed && "left-collapsed")}>
         <aside className="left-rail">
           <div className="rail-title-row">
-            <span>PROJECT SPACE</span>
+            <span>项目空间</span>
             <button onClick={() => setLeftCollapsed(true)} aria-label="收起项目栏"><PanelLeftClose size={15} /></button>
           </div>
           <Dialog open={dialogs.project} onOpenChange={(value) => setDialog("project", value)}>
             <DialogTrigger asChild><Button className="new-project" variant="outline"><Plus />新建项目</Button></DialogTrigger>
             <DialogContent className="dialog-wide">
               <DialogHeader>
-                <DialogTitle>创建 Project Graph</DialogTitle>
+                <DialogTitle>创建 AI Project Graph</DialogTitle>
                 <DialogDescription>创建 Project Architect、Blueprint Draft 和第一版稳定 ID 架构。</DialogDescription>
               </DialogHeader>
               <form id="new-project-form" className="form-grid" onSubmit={(event) => {
@@ -352,22 +389,22 @@ export function ProjectGraphApp() {
                 setBlueprintDraft(next.blueprint);
                 setDialog("project", false);
                 setDialog("blueprint", true);
-                toast.success("Project Architect 与 Blueprint Draft 已创建");
+                toast.success("项目架构师（Project Architect）与 Blueprint Draft 已创建");
               }}>
                 <FormField label="项目名称"><Input name="name" placeholder="例如：电商经营分析平台" autoFocus /></FormField>
                 <FormField label="初始化模式">
                   <select name="mode" className="native-select">
-                    <option value="greenfield">Greenfield · 新项目</option>
-                    <option value="existing">Existing · 现有仓库</option>
-                    <option value="hybrid">Hybrid · 计划与现实并行</option>
+                    <option value="greenfield">新建项目（Greenfield）</option>
+                    <option value="existing">现有仓库（Existing）</option>
+                    <option value="hybrid">计划与现实并行（Hybrid）</option>
                   </select>
                 </FormField>
                 <FormField label="项目目标"><Textarea name="goal" placeholder="用一句话说明要构建什么，以及服务谁" /></FormField>
                 <FormField label="主要模块" hint="用逗号或换行分隔，系统会为每个模块创建稳定 ID">
                   <Textarea name="modules" placeholder="身份认证，文件管理，数据处理，经营看板" />
                 </FormField>
-                <FormField label="Workspace 路径"><Input name="workspacePath" placeholder="D:/projects/commerce-platform" /></FormField>
-                <FormField label="Repository URL"><Input name="repositoryUrl" placeholder="https://github.com/org/repo" /></FormField>
+                <FormField label="工作区路径（Workspace）"><Input name="workspacePath" placeholder="D:/projects/commerce-platform" /></FormField>
+                <FormField label="代码仓库地址（Repository URL）"><Input name="repositoryUrl" placeholder="https://github.com/org/repo" /></FormField>
               </form>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setDialog("project", false)}>取消</Button>
@@ -377,35 +414,35 @@ export function ProjectGraphApp() {
           </Dialog>
 
           <div className="rail-section">
-            <span className="rail-label">OVERVIEW</span>
-            <button className="rail-item active"><Network /><span>Architecture</span><em>{state.nodes.length}</em></button>
-            <button className="rail-item" onClick={() => setLens("progress")}><Activity /><span>Project State</span><em>{progress}%</em></button>
-            <button className="rail-item" onClick={() => setDialog("blueprint", true)}><FileCode2 /><span>Blueprint</span><em>V{state.graphVersion}</em></button>
+            <span className="rail-label">总览</span>
+            <button className="rail-item active"><Network /><span>架构</span><em>{state.nodes.length}</em></button>
+            <button className="rail-item" onClick={() => setLens("progress")}><Activity /><span>项目状态（Project State）</span><em>{progress}%</em></button>
+            <button className="rail-item" onClick={() => setDialog("blueprint", true)}><FileCode2 /><span>项目蓝图（Blueprint）</span><em>第 {state.graphVersion} 版</em></button>
           </div>
 
           <div className="rail-section conversations-list">
-            <span className="rail-label">CONVERSATIONS</span>
+            <span className="rail-label">会话</span>
             <button
               className="rail-item architect"
               onClick={() => void openConversation(state.conversations.find((item) => item.type === "architect"))}
-            ><Bot /><span>Project Architect</span><i /></button>
+            ><Bot /><span>项目架构师（Project Architect）</span><i /></button>
             {state.conversations.filter((item) => item.nodeId).slice(0, 5).map((conversation) => (
               <button className="conversation-row" key={conversation.id} onClick={() => {
                 if (conversation.nodeId) setSelectedNodeId(conversation.nodeId);
                 void openConversation(conversation);
               }}>
                 <MessageSquarePlus size={13} />
-                <span><strong>{conversation.title}</strong><small>{conversation.type} · {conversation.threadId}</small></span>
+                <span><strong>{conversation.title}</strong><small>{conversationTypeLabels[conversation.type]} · {conversation.threadId}</small></span>
               </button>
             ))}
           </div>
           <div className="rail-state-card">
-            <div><span>Project State</span><strong>{progress}%</strong></div>
+            <div><span>项目状态（Project State）</span><strong>{progress}%</strong></div>
             <Progress value={progress} />
             <p>
-              <CheckCircle2 />{snapshot.completedNodes.length} done
-              <CircleDot />{snapshot.activeNodes.length} active
-              <LockKeyhole />{snapshot.blockedNodes.length} blocked
+              <CheckCircle2 />{snapshot.completedNodes.length} 已完成
+              <CircleDot />{snapshot.activeNodes.length} 进行中
+              <LockKeyhole />{snapshot.blockedNodes.length} 阻塞
             </p>
           </div>
         </aside>
@@ -420,7 +457,7 @@ export function ProjectGraphApp() {
           <div className="canvas-toolbar">
             <div className="search-box">
               <Search size={15} />
-              <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索节点、API、文件或 Conversation" />
+              <Input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索节点、API、文件或会话" />
               <kbd>⌘K</kbd>
             </div>
             <div className="toolbar-divider" />
@@ -428,7 +465,7 @@ export function ProjectGraphApp() {
               <DialogTrigger asChild><Button size="sm" variant="outline"><Plus />节点</Button></DialogTrigger>
               <DialogContent>
                 <DialogHeader>
-                  <DialogTitle>添加 Architecture Node</DialogTitle>
+                  <DialogTitle>添加架构节点（Architecture Node）</DialogTitle>
                   <DialogDescription>稳定 ID 创建后不可变；名称和位置可以持续调整。</DialogDescription>
                 </DialogHeader>
                 <form id="new-node-form" className="form-grid" onSubmit={(event) => {
@@ -453,7 +490,7 @@ export function ProjectGraphApp() {
                   <FormField label="节点名称"><Input name="name" placeholder="密码重置" /></FormField>
                   <FormField label="类型">
                     <select name="type" className="native-select">
-                      {NODE_TYPES.map((type) => <option key={type}>{type}</option>)}
+                      {NODE_TYPES.map((type) => <option key={type} value={type}>{nodeTypeLabels[type]}</option>)}
                     </select>
                   </FormField>
                   <FormField label="父节点">
@@ -462,7 +499,7 @@ export function ProjectGraphApp() {
                       {state.nodes.map((node) => <option value={node.id} key={node.id}>{node.name} · {node.id}</option>)}
                     </select>
                   </FormField>
-                  <FormField label="Goal"><Textarea name="goal" placeholder="该节点最终需要交付什么" /></FormField>
+                  <FormField label="目标（Goal）"><Textarea name="goal" placeholder="该节点最终需要交付什么" /></FormField>
                 </form>
                 <DialogFooter>
                   <Button variant="outline" onClick={() => setDialog("node", false)}>取消</Button>
@@ -472,7 +509,7 @@ export function ProjectGraphApp() {
             </Dialog>
             <Select value={connectType} onValueChange={(value) => setConnectType(value as EdgeType)}>
               <SelectTrigger size="sm" className="edge-select"><SelectValue /></SelectTrigger>
-              <SelectContent>{EDGE_TYPES.map((type) => <SelectItem key={type} value={type}>{type}</SelectItem>)}</SelectContent>
+              <SelectContent>{EDGE_TYPES.map((type) => <SelectItem key={type} value={type}>{edgeTypeLabels[type]}</SelectItem>)}</SelectContent>
             </Select>
             <Button size="sm" variant={connectMode ? "default" : "outline"} onClick={() => {
               setConnectMode((current) => !current);
@@ -539,7 +576,7 @@ export function ProjectGraphApp() {
                   return (
                     <g key={edge.id} className="edge-group">
                       <path d={path} stroke={edgeColor(edge)} markerEnd="url(#arrow)" />
-                      <text x={midX} y={(y1 + y2) / 2 - 7}>{edge.label}</text>
+                      <text x={midX} y={(y1 + y2) / 2 - 7}>{edgeTypeLabels[edge.type] ?? edge.label}</text>
                     </g>
                   );
                 })}
@@ -572,11 +609,11 @@ export function ProjectGraphApp() {
 
           <Tabs value={lens} onValueChange={(value) => setLens(value as Lens)} className="lens-tabs">
             <TabsList variant="line">
-              <TabsTrigger value="architecture"><Network />Architecture</TabsTrigger>
-              <TabsTrigger value="dependency"><GitFork />Dependency</TabsTrigger>
-              <TabsTrigger value="progress"><Activity />Progress</TabsTrigger>
-              <TabsTrigger value="runtime"><Waypoints />Runtime</TabsTrigger>
-              <TabsTrigger value="evidence"><ShieldCheck />Evidence</TabsTrigger>
+              <TabsTrigger value="architecture"><Network />架构</TabsTrigger>
+              <TabsTrigger value="dependency"><GitFork />依赖</TabsTrigger>
+              <TabsTrigger value="progress"><Activity />进度</TabsTrigger>
+              <TabsTrigger value="runtime"><Waypoints />运行时</TabsTrigger>
+              <TabsTrigger value="evidence"><ShieldCheck />证据</TabsTrigger>
             </TabsList>
           </Tabs>
         </section>
@@ -597,13 +634,13 @@ export function ProjectGraphApp() {
           }}
           onUpdateGoal={(goal) => {
             if (selectedNode && goal !== selectedNode.goal) {
-              run(() => updateNode(state, selectedNode.id, { goal }, state.revision), "Goal 已更新");
+              run(() => updateNode(state, selectedNode.id, { goal }, state.revision), "目标已更新");
             }
           }}
           onAccept={() => {
             if (selectedNode) run(
               () => acceptNode(state, selectedNode.id, state.revision),
-              "Checkpoint 已创建，Project State 已更新",
+              "已创建 Checkpoint，已更新 Project State",
             );
           }}
         />
@@ -646,7 +683,7 @@ export function ProjectGraphApp() {
         onConfirm={() => {
           const ok = run(
             () => confirmBlueprint(state, blueprintDraft, state.revision),
-            "Blueprint 已确认，Architecture V" + (state.graphVersion + 1),
+            "Blueprint 已确认，架构第 " + (state.graphVersion + 1) + " 版",
           );
           if (ok) setDialog("blueprint", false);
         }}
@@ -685,14 +722,14 @@ function GraphNode({
     >
       <span className="node-top">
         <span className="node-icon"><Icon size={15} /></span>
-        <Badge variant="outline">{node.type}</Badge>
+        <Badge variant="outline">{nodeTypeLabels[node.type]}</Badge>
         <i style={{ background: statusMeta[node.status].dot }} />
       </span>
       <strong>{node.name}</strong>
       <small>{node.stableKey}</small>
       <span className="node-bottom">
         <span>{statusMeta[node.status].label}</span>
-        {evidenceCount ? <em><ShieldCheck size={12} />{evidenceCount}</em> : <em className="muted-evidence">no evidence</em>}
+        {evidenceCount ? <em><ShieldCheck size={12} />{evidenceCount}</em> : <em className="muted-evidence">暂无证据</em>}
       </span>
     </button>
   );
@@ -722,12 +759,12 @@ function DetailPanel({
     <aside className="detail-panel">
       <div className="detail-hero">
         <div className="detail-icon"><Icon /></div>
-        <div><Badge variant="outline">{node.type}</Badge><h2>{node.name}</h2><code>{node.stableKey}</code></div>
+        <div><Badge variant="outline">{nodeTypeLabels[node.type]}</Badge><h2>{node.name}</h2><code>{node.stableKey}</code></div>
       </div>
       <div className="detail-status-row">
-        <span>Status</span>
+        <span>状态</span>
         {node.status === "done" ? (
-          <Badge className="done-badge"><CheckCircle2 />Done · User accepted</Badge>
+          <Badge className="done-badge"><CheckCircle2 />已完成 · 用户已验收</Badge>
         ) : (
           <Select value={node.status} onValueChange={(value) => onMove(value as NodeStatus)}>
             <SelectTrigger size="sm"><SelectValue /></SelectTrigger>
@@ -741,13 +778,13 @@ function DetailPanel({
       </div>
       <Tabs defaultValue="overview" className="detail-tabs">
         <TabsList variant="line">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="context">Context</TabsTrigger>
-          <TabsTrigger value="history">History</TabsTrigger>
+          <TabsTrigger value="overview">概览</TabsTrigger>
+          <TabsTrigger value="context">上下文</TabsTrigger>
+          <TabsTrigger value="history">历史</TabsTrigger>
         </TabsList>
         <TabsContent value="overview" className="detail-scroll">
           <section className="detail-section editable-section">
-            <div className="section-heading"><span>GOAL</span><small>rev {node.version}</small></div>
+            <div className="section-heading"><span>目标</span><small>版本 {node.version}</small></div>
             <Textarea
               key={node.id + "-" + node.version}
               defaultValue={node.goal}
@@ -755,13 +792,13 @@ function DetailPanel({
             />
           </section>
           <section className="detail-section">
-            <div className="section-heading"><span>ACCEPTANCE</span><small>{node.acceptanceCriteria.length} items</small></div>
+            <div className="section-heading"><span>验收标准</span><small>{node.acceptanceCriteria.length} 项</small></div>
             <ul className="check-list">
               {node.acceptanceCriteria.map((item, index) => <li key={item + index}><CircleDot />{item}</li>)}
             </ul>
           </section>
           <section className="detail-section">
-            <div className="section-heading"><span>DEPENDENCIES</span></div>
+            <div className="section-heading"><span>依赖项</span></div>
             <div className="dependency-list">
               {context?.dependencies.length ? context.dependencies.map((dependency) => (
                 <button key={dependency.id} onClick={() => onSelectNode(dependency.id)}>
@@ -769,12 +806,12 @@ function DetailPanel({
                   <span><strong>{dependency.name}</strong><small>{dependency.id}</small></span>
                   <Badge className={statusMeta[dependency.status].className}>{statusMeta[dependency.status].short}</Badge>
                 </button>
-              )) : <EmptyState icon={GitFork} title="没有直接依赖" copy="用连接模式添加 blocks 或 depends_on。" />}
+              )) : <EmptyState icon={GitFork} title="没有直接依赖" copy="使用连接模式添加 blocks 或 depends_on。" />}
             </div>
           </section>
           <section className="detail-section">
             <div className="section-heading">
-              <span>CODE EVIDENCE</span>
+              <span>代码证据</span>
               <Button variant="ghost" size="xs" onClick={onNewEvidence}><Plus />添加</Button>
             </div>
             <div className="evidence-list">
@@ -782,8 +819,8 @@ function DetailPanel({
                 <div key={item.id} className={cx("evidence-row", item.verificationStatus)}>
                   <FileCode2 />
                   <span>
-                    <strong>{item.path || "Invalid source"}</strong>
-                    <small>{item.startLine ? "L" + item.startLine + "–" + item.endLine : "No line range"} · {item.commitSha?.slice(0, 8) || "No commit"}</small>
+                    <strong>{item.path || "无效来源"}</strong>
+                    <small>{item.startLine ? "第 " + item.startLine + "–" + item.endLine + " 行" : "未指定行范围"} · {item.commitSha?.slice(0, 8) || "无 Commit"}</small>
                   </span>
                   {item.verificationStatus === "verified" ? <ShieldCheck /> : <X />}
                 </div>
@@ -793,14 +830,14 @@ function DetailPanel({
           </section>
           <section className="detail-section">
             <div className="section-heading">
-              <span>CONVERSATIONS</span>
-              <Button variant="ghost" size="xs" onClick={onNewConversation}><MessageSquarePlus />New</Button>
+              <span>会话</span>
+              <Button variant="ghost" size="xs" onClick={onNewConversation}><MessageSquarePlus />新建</Button>
             </div>
             <div className="conversation-cards">
               {conversations.map((conversation) => (
                 <button key={conversation.id} onClick={() => onOpenConversation(conversation)}>
                   <span className={cx("conversation-kind", conversation.type)}><Bot /></span>
-                  <span><strong>{conversation.title}</strong><small>{conversation.type} · {formatDate(conversation.updatedAt)}</small></span>
+                  <span><strong>{conversation.title}</strong><small>{conversationTypeLabels[conversation.type]} · {formatDate(conversation.updatedAt)}</small></span>
                   <ArrowRight />
                 </button>
               ))}
@@ -809,7 +846,7 @@ function DetailPanel({
           </section>
           {node.status === "in_review" ? (
             <AlertDialog>
-              <AlertDialogTrigger asChild><Button className="accept-button"><CheckCircle2 />Accept & Complete</Button></AlertDialogTrigger>
+              <AlertDialogTrigger asChild><Button className="accept-button"><CheckCircle2 />确认并完成</Button></AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
                   <AlertDialogTitle>确认完成「{node.name}」？</AlertDialogTitle>
@@ -827,21 +864,21 @@ function DetailPanel({
         </TabsContent>
         <TabsContent value="context" className="detail-scroll">
           <div className="context-header">
-            <div><Code2 /><span><strong>Context Compiler</strong><small>Global + Dependency + Node + Current Thread</small></span></div>
-            <Badge variant="outline">{JSON.stringify(context).length} chars</Badge>
+            <div><Code2 /><span><strong>Context Compiler</strong><small>全局 + 依赖 + 节点 + 当前会话</small></span></div>
+            <Badge variant="outline">{JSON.stringify(context).length} 字符</Badge>
           </div>
           <pre className="context-code">{JSON.stringify(context, null, 2)}</pre>
         </TabsContent>
         <TabsContent value="history" className="detail-scroll">
           <section className="detail-section">
-            <div className="section-heading"><span>CHECKPOINTS</span></div>
+            <div className="section-heading"><span>检查点</span></div>
             <div className="timeline">
               {checkpoints.map((item) => (
                 <article key={item.id}>
                   <i />
                   <div>
                     <strong>{item.summary}</strong>
-                    <small>{formatDate(item.acceptedAt)} · {item.acceptedBy}</small>
+                    <small>{formatDate(item.acceptedAt)} · {item.acceptedBy === "User" ? "用户" : item.acceptedBy}</small>
                     <p>{item.implementation}</p>
                     <code>{item.commitSha.slice(0, 10)}</code>
                   </div>
@@ -851,12 +888,12 @@ function DetailPanel({
             </div>
           </section>
           <section className="detail-section">
-            <div className="section-heading"><span>LAYOUT FACT</span></div>
+            <div className="section-heading"><span>布局信息</span></div>
             <dl className="fact-grid">
-              <div><dt>Mode</dt><dd>{node.layoutMode}</dd></div>
-              <div><dt>Position</dt><dd>{Math.round(node.x)}, {Math.round(node.y)}</dd></div>
-              <div><dt>Locked</dt><dd>{String(node.layoutLocked)}</dd></div>
-              <div><dt>Node version</dt><dd>{node.version}</dd></div>
+              <div><dt>布局模式</dt><dd>{layoutModeLabels[node.layoutMode]}</dd></div>
+              <div><dt>位置</dt><dd>{Math.round(node.x)}, {Math.round(node.y)}</dd></div>
+              <div><dt>已锁定</dt><dd>{node.layoutLocked ? "是" : "否"}</dd></div>
+              <div><dt>节点版本</dt><dd>{node.version}</dd></div>
             </dl>
           </section>
         </TabsContent>
@@ -878,7 +915,7 @@ function ConversationDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>New Node Conversation</DialogTitle>
+          <DialogTitle>新建节点会话</DialogTitle>
           <DialogDescription>保存完整 Codex Binding；新会话只编译当前节点相关上下文。</DialogDescription>
         </DialogHeader>
         <form id="conversation-form" className="form-grid" onSubmit={(event) => {
@@ -900,14 +937,14 @@ function ConversationDialog({
           <FormField label="标题"><Input name="title" placeholder="实现登录失败重试" autoFocus /></FormField>
           <FormField label="类型">
             <select className="native-select" name="type">
-              <option value="implementation">Implementation</option><option value="research">Research</option>
-              <option value="debug">Debug</option><option value="review">Review</option><option value="side_chat">Side Chat</option>
+              <option value="implementation">实现</option><option value="research">研究</option>
+              <option value="debug">调试</option><option value="review">评审</option><option value="side_chat">侧聊</option>
             </select>
           </FormField>
           <FormField label="Codex Thread ID"><Input name="threadId" placeholder="thr_..." required /></FormField>
           <FormField label="Codex Project ID"><Input name="codexProjectId" defaultValue={state.project.id} /></FormField>
           <FormField label="Codex Host ID"><Input name="codexHostId" defaultValue="local" /></FormField>
-          <FormField label="Workspace"><Input name="workspacePath" defaultValue={state.project.workspacePath} /></FormField>
+          <FormField label="工作区（Workspace）"><Input name="workspacePath" defaultValue={state.project.workspacePath} /></FormField>
           <FormField label="当前摘要"><Textarea name="summary" placeholder="可稍后由 Agent 更新" /></FormField>
         </form>
         <DialogFooter>
@@ -932,8 +969,8 @@ function EvidenceDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>绑定 Repository Evidence</DialogTitle>
-          <DialogDescription>Fail-closed：路径、行号或 40 位 Commit SHA 无效时不会显示 Verified。</DialogDescription>
+          <DialogTitle>绑定代码仓库证据（Repository Evidence）</DialogTitle>
+          <DialogDescription>Fail-closed：路径、行号或 40 位 Commit SHA 无效时不会显示“已验证”。</DialogDescription>
         </DialogHeader>
         <form id="evidence-form" className="form-grid" onSubmit={(event) => {
           event.preventDefault();
@@ -948,11 +985,11 @@ function EvidenceDialog({
           });
         }}>
           <FormField label="节点"><Input value={node?.name ?? ""} disabled /></FormField>
-          <FormField label="Repository URL"><Input name="repositoryUrl" defaultValue={state.project.repositoryUrl} /></FormField>
+          <FormField label="代码仓库地址（Repository URL）"><Input name="repositoryUrl" defaultValue={state.project.repositoryUrl} /></FormField>
           <FormField label="相对路径"><Input name="path" placeholder="server/auth/router.ts" required /></FormField>
           <div className="two-columns">
-            <FormField label="Start line"><Input name="startLine" type="number" min="1" defaultValue="1" /></FormField>
-            <FormField label="End line"><Input name="endLine" type="number" min="1" defaultValue="1" /></FormField>
+            <FormField label="起始行号"><Input name="startLine" type="number" min="1" defaultValue="1" /></FormField>
+            <FormField label="结束行号"><Input name="endLine" type="number" min="1" defaultValue="1" /></FormField>
           </div>
           <FormField label="40 位 Commit SHA">
             <Input name="commitSha" placeholder="71ab43f8d3d3f8d0fdc9c04d018e902a48d7af11" required />
@@ -981,24 +1018,24 @@ function BlueprintDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="blueprint-dialog">
         <DialogHeader>
-          <DialogTitle>Project Blueprint</DialogTitle>
-          <DialogDescription>用户确认的结构化项目合同，不是聊天摘要。确认后生成新的 Graph Version。</DialogDescription>
+          <DialogTitle>项目蓝图（Project Blueprint）</DialogTitle>
+          <DialogDescription>用户确认的结构化项目合同，不是聊天摘要。确认后生成新的图版本（Graph Version）。</DialogDescription>
         </DialogHeader>
         <div className="blueprint-status">
-          <Badge className={draft.status === "confirmed" ? "done-badge" : "status-review"}>{draft.status}</Badge>
+          <Badge className={draft.status === "confirmed" ? "done-badge" : "status-review"}>{blueprintStatusLabels[draft.status]}</Badge>
           <span>Project Architect · {state.project.architectThreadId}</span>
         </div>
         <div className="blueprint-grid">
-          <FormField label="PROJECT GOAL"><Textarea value={draft.goal} onChange={(event) => onDraftChange({ ...draft, goal: event.target.value })} /></FormField>
-          <FormField label="TECH STACK" hint="每行一个技术"><Textarea value={draft.techStack.join("\n")} onChange={(event) => onDraftChange({ ...draft, techStack: event.target.value.split("\n").filter(Boolean) })} /></FormField>
-          <FormField label="MAJOR MODULES"><Textarea value={draft.majorModules.join("\n")} onChange={(event) => onDraftChange({ ...draft, majorModules: event.target.value.split("\n").filter(Boolean) })} /></FormField>
-          <FormField label="CONSTRAINTS"><Textarea value={draft.constraints.join("\n")} onChange={(event) => onDraftChange({ ...draft, constraints: event.target.value.split("\n").filter(Boolean) })} /></FormField>
-          <FormField label="SECURITY STRATEGY"><Textarea value={draft.securityStrategy} onChange={(event) => onDraftChange({ ...draft, securityStrategy: event.target.value })} /></FormField>
-          <FormField label="DEPLOYMENT STRATEGY"><Textarea value={draft.deploymentStrategy} onChange={(event) => onDraftChange({ ...draft, deploymentStrategy: event.target.value })} /></FormField>
+          <FormField label="项目目标"><Textarea value={draft.goal} onChange={(event) => onDraftChange({ ...draft, goal: event.target.value })} /></FormField>
+          <FormField label="技术栈" hint="每行一个技术"><Textarea value={draft.techStack.join("\n")} onChange={(event) => onDraftChange({ ...draft, techStack: event.target.value.split("\n").filter(Boolean) })} /></FormField>
+          <FormField label="主要模块"><Textarea value={draft.majorModules.join("\n")} onChange={(event) => onDraftChange({ ...draft, majorModules: event.target.value.split("\n").filter(Boolean) })} /></FormField>
+          <FormField label="约束条件"><Textarea value={draft.constraints.join("\n")} onChange={(event) => onDraftChange({ ...draft, constraints: event.target.value.split("\n").filter(Boolean) })} /></FormField>
+          <FormField label="安全策略"><Textarea value={draft.securityStrategy} onChange={(event) => onDraftChange({ ...draft, securityStrategy: event.target.value })} /></FormField>
+          <FormField label="部署策略"><Textarea value={draft.deploymentStrategy} onChange={(event) => onDraftChange({ ...draft, deploymentStrategy: event.target.value })} /></FormField>
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>稍后确认</Button>
-          <Button onClick={onConfirm}><Check />Confirm Blueprint</Button>
+          <Button onClick={onConfirm}><Check />确认 Blueprint</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -1016,8 +1053,8 @@ function DiagnosticsDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="dialog-wide">
         <DialogHeader>
-          <DialogTitle>Graph Diagnostics</DialogTitle>
-          <DialogDescription>Generate → Validate → Targeted Fix → Validate；每条错误提供结构化修复建议。</DialogDescription>
+          <DialogTitle>图谱诊断（Graph Diagnostics）</DialogTitle>
+          <DialogDescription>生成 → 校验 → 定向修复 → 再校验；每条错误提供结构化修复建议。</DialogDescription>
         </DialogHeader>
         <div className="diagnostics-list">
           {diagnostics.length ? diagnostics.map((item, index) => (
@@ -1026,10 +1063,10 @@ function DiagnosticsDialog({
               <div>
                 <div><Badge variant="outline">{item.code}</Badge><code>{item.subject}</code></div>
                 <strong>{item.message}</strong>
-                <p>Supported fix：{item.supportedFix}</p>
+                <p>可执行修复：{item.supportedFix}</p>
               </div>
             </article>
-          )) : <EmptyState icon={ShieldCheck} title="Graph validation passed" copy="稳定 ID、层级、关系、Checkpoint 与 Evidence 约束均通过。" />}
+          )) : <EmptyState icon={ShieldCheck} title="图谱校验通过" copy="稳定 ID、层级、关系、Checkpoint 与 Evidence 约束均通过。" />}
         </div>
         <DialogFooter><Button onClick={() => onOpenChange(false)}>完成</Button></DialogFooter>
       </DialogContent>

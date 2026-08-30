@@ -35,6 +35,12 @@ export const EDGE_TYPES = [
   "related",
 ] as const;
 
+const edgeLabels: Record<(typeof EDGE_TYPES)[number], string> = {
+  contains: "包含", depends_on: "依赖", blocks: "阻塞", calls: "调用", reads: "读取",
+  writes: "写入", produces: "产出", consumes: "消费", publishes: "发布",
+  subscribes: "订阅", authenticates: "认证", related: "关联",
+};
+
 export type NodeStatus = (typeof NODE_STATUSES)[number];
 export type NodeType = (typeof NODE_TYPES)[number];
 export type EdgeType = (typeof EDGE_TYPES)[number];
@@ -216,7 +222,7 @@ export function createSeedState(): ProjectState {
     branch: "main",
     knownLimitations: ["暂未加入审计日志"],
     conversationIds: ["conv-db-schema"],
-    acceptedBy: "User",
+    acceptedBy: "用户",
     acceptedAt: "2026-08-29T12:20:00.000Z",
   };
 
@@ -258,7 +264,7 @@ export function createSeedState(): ProjectState {
 
   return {
     project: { id: "admin-console", name: "后台管理系统", description: "面向内部运营人员的安全后台", goal: "用可追踪的架构节点组织 AI Coding 全过程", workspacePath: "D:/projects/admin-console", repositoryUrl: "https://github.com/example/admin-console", defaultBranch: "main", architectThreadId: "thr_architect_01", mode: "hybrid", status: "active" },
-    blueprint: { goal: "构建可扩展、安全的后台管理系统", inScope: ["账号认证", "文件管理", "后台权限"], outOfScope: ["多租户计费", "移动端 App"], techStack: ["React", "Node.js", "PostgreSQL", "Docker"], principles: ["Plan 与 Reality 分离", "人工确认完成", "证据优先"], constraints: ["本地优先", "测试与正式环境隔离"], majorModules: ["身份认证", "文件管理", "管理后台", "用户数据库"], dataStrategy: "PostgreSQL 作为权威业务数据源", securityStrategy: "JWT + Refresh Token，角色权限最小化", deploymentStrategy: "Docker Compose 本地部署", codingRules: ["稳定 ID 不随名称变化", "所有变更必须带 revision"], acceptanceDefinition: ["核心路径自动化测试通过", "用户人工验收后才算 Done"], status: "confirmed" },
+    blueprint: { goal: "构建可扩展、安全的后台管理系统", inScope: ["账号认证", "文件管理", "后台权限"], outOfScope: ["多租户计费", "移动端 App"], techStack: ["React", "Node.js", "PostgreSQL", "Docker"], principles: ["计划与现实分离", "人工确认完成", "证据优先"], constraints: ["本地优先", "测试与正式环境隔离"], majorModules: ["身份认证", "文件管理", "管理后台", "用户数据库"], dataStrategy: "PostgreSQL 作为权威业务数据源", securityStrategy: "JWT + Refresh Token，角色权限最小化", deploymentStrategy: "Docker Compose 本地部署", codingRules: ["稳定 ID 不随名称变化", "所有变更必须带 revision"], acceptanceDefinition: ["核心路径自动化测试通过", "用户人工验收后才算已完成"], status: "confirmed" },
     graphVersion: 1,
     revision: 18,
     nodes,
@@ -286,7 +292,7 @@ function bump(state: ProjectState) {
 export function moveNode(state: ProjectState, nodeId: string, status: NodeStatus, expectedRevision: number, actor: "agent" | "user" = "agent") {
   assertRevision(state, expectedRevision);
   if (status === "done") {
-    throw new DomainError(actor === "agent" ? "AGENT_CANNOT_COMPLETE" : "CHECKPOINT_REQUIRED", "Done 只能通过 Accept & Complete 创建 Checkpoint 后进入。");
+    throw new DomainError(actor === "agent" ? "AGENT_CANNOT_COMPLETE" : "CHECKPOINT_REQUIRED", "已完成状态只能通过确认并完成，在创建 Checkpoint 后进入。");
   }
   const next = clone(state);
   const node = next.nodes.find((item) => item.id === nodeId);
@@ -303,7 +309,7 @@ export function acceptNode(state: ProjectState, nodeId: string, expectedRevision
   const next = clone(state);
   const node = next.nodes.find((item) => item.id === nodeId);
   if (!node) throw new DomainError("NODE_NOT_FOUND", `节点 ${nodeId} 不存在。`);
-  if (node.status !== "in_review") throw new DomainError("NOT_IN_REVIEW", "只有 In Review 节点可以人工验收完成。");
+  if (node.status !== "in_review") throw new DomainError("NOT_IN_REVIEW", "只有待验收节点可以人工验收完成。");
   const nodeEvidence = next.evidence.filter((item) => item.nodeId === node.id);
   const conversations = next.conversations.filter((item) => item.nodeId === node.id);
   const checkpoint: Checkpoint = {
@@ -318,7 +324,7 @@ export function acceptNode(state: ProjectState, nodeId: string, expectedRevision
     branch: input.branch ?? next.project.defaultBranch,
     knownLimitations: input.knownLimitations ?? [],
     conversationIds: input.conversationIds ?? conversations.map((item) => item.id),
-    acceptedBy: input.acceptedBy ?? "User",
+    acceptedBy: input.acceptedBy ?? "用户",
     acceptedAt: input.acceptedAt ?? now(),
   };
   next.checkpoints.push(checkpoint);
@@ -361,7 +367,7 @@ export function createEdge(state: ProjectState, sourceNodeId: string, targetNode
   if (![sourceNodeId, targetNodeId].every((id) => state.nodes.some((node) => node.id === id))) throw new DomainError("UNKNOWN_EDGE_NODE", "连线端点不存在。");
   if (state.edges.some((edge) => edge.sourceNodeId === sourceNodeId && edge.targetNodeId === targetNodeId && edge.type === type)) throw new DomainError("DUPLICATE_EDGE", "相同关系已存在。");
   const next = clone(state);
-  next.edges.push({ id: uid("edge"), stableKey: `${sourceNodeId}.${type}.${targetNodeId}`, sourceNodeId, targetNodeId, type, label: type.replaceAll("_", " "), layer: type === "contains" ? "structure" : ["calls", "reads", "writes", "produces", "consumes", "publishes", "subscribes", "authenticates"].includes(type) ? "runtime" : "execution" });
+  next.edges.push({ id: uid("edge"), stableKey: `${sourceNodeId}.${type}.${targetNodeId}`, sourceNodeId, targetNodeId, type, label: edgeLabels[type], layer: type === "contains" ? "structure" : ["calls", "reads", "writes", "produces", "consumes", "publishes", "subscribes", "authenticates"].includes(type) ? "runtime" : "execution" });
   return bump(next);
 }
 
@@ -371,7 +377,7 @@ export function bindConversation(state: ProjectState, nodeId: string | null, inp
   if (!input.threadId?.trim()) throw new DomainError("THREAD_REQUIRED", "必须保存 Codex Thread ID。");
   const next = clone(state);
   const createdAt = now();
-  next.conversations.push({ id: input.id ?? uid("conv"), nodeId, type: input.type ?? "implementation", role: input.role ?? "implementation", title: input.title?.trim() || "未命名 Conversation", threadId: input.threadId.trim(), codexProjectId: input.codexProjectId?.trim() || next.project.id, codexProjectKind: input.codexProjectKind?.trim() || "workspace", codexHostId: input.codexHostId?.trim() || "local", workspacePath: input.workspacePath?.trim() || next.project.workspacePath, summary: input.summary?.trim() || "尚未生成工作摘要。", createdAt, updatedAt: createdAt });
+  next.conversations.push({ id: input.id ?? uid("conv"), nodeId, type: input.type ?? "implementation", role: input.role ?? "implementation", title: input.title?.trim() || "未命名会话", threadId: input.threadId.trim(), codexProjectId: input.codexProjectId?.trim() || next.project.id, codexProjectKind: input.codexProjectKind?.trim() || "workspace", codexHostId: input.codexHostId?.trim() || "local", workspacePath: input.workspacePath?.trim() || next.project.workspacePath, summary: input.summary?.trim() || "尚未生成工作摘要。", createdAt, updatedAt: createdAt });
   return bump(next);
 }
 
@@ -442,11 +448,11 @@ export function validateGraph(state: ProjectState): Diagnostic[] {
   const diagnostics: Diagnostic[] = [];
   const ids = new Set<string>();
   for (const node of state.nodes) {
-    if (ids.has(node.id)) diagnostics.push({ code: "DUPLICATE_NODE_ID", severity: "error", subject: node.id, message: "Node ID 必须唯一。", supportedFix: "为重复节点分配新的稳定 ID。" });
+    if (ids.has(node.id)) diagnostics.push({ code: "DUPLICATE_NODE_ID", severity: "error", subject: node.id, message: "节点 ID 必须唯一。", supportedFix: "为重复节点分配新的稳定 ID。" });
     ids.add(node.id);
-    if (!/^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/.test(node.stableKey)) diagnostics.push({ code: "INVALID_STABLE_ID", severity: "error", subject: node.id, message: "Stable ID 格式无效。", supportedFix: "使用小写字母、数字和 ._-。" });
+    if (!/^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/.test(node.stableKey)) diagnostics.push({ code: "INVALID_STABLE_ID", severity: "error", subject: node.id, message: "稳定 ID 格式无效。", supportedFix: "使用小写字母、数字和 ._-。" });
     if (node.parentId && !state.nodes.some((item) => item.id === node.parentId)) diagnostics.push({ code: "INVALID_PARENT", severity: "error", subject: node.id, message: `父节点 ${node.parentId} 不存在。`, supportedFix: "选择有效父节点或移除 parentId。" });
-    if (node.status === "done" && !state.checkpoints.some((checkpoint) => checkpoint.nodeId === node.id)) diagnostics.push({ code: "UNVERIFIED_DONE", severity: "error", subject: node.id, message: "Done 节点缺少用户 Checkpoint。", supportedFix: "退回 In Review 后执行 Accept & Complete。" });
+    if (node.status === "done" && !state.checkpoints.some((checkpoint) => checkpoint.nodeId === node.id)) diagnostics.push({ code: "UNVERIFIED_DONE", severity: "error", subject: node.id, message: "已完成节点缺少用户 Checkpoint。", supportedFix: "退回待验收后执行确认并完成。" });
   }
   if (hasCycle(state.nodes.map((node) => node.id), state.nodes.filter((node) => node.parentId).map((node) => [node.id, node.parentId!]))) diagnostics.push({ code: "PARENT_CYCLE", severity: "error", subject: "graph", message: "父子层级存在循环。", supportedFix: "移除循环中的一个 parentId。" });
   for (const edge of state.edges) if (!ids.has(edge.sourceNodeId) || !ids.has(edge.targetNodeId)) diagnostics.push({ code: "UNKNOWN_EDGE_NODE", severity: "error", subject: edge.id, message: "连线引用了不存在的节点。", supportedFix: "修复端点或删除该连线。" });
@@ -455,9 +461,9 @@ export function validateGraph(state: ProjectState): Diagnostic[] {
   for (let i = 0; i < state.nodes.length; i += 1) for (let j = i + 1; j < state.nodes.length; j += 1) {
     const a = state.nodes[i]; const b = state.nodes[j];
     const overlaps = a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
-    if (overlaps) diagnostics.push({ code: "NODE_OVERLAP", severity: "warning", subject: `${a.id}, ${b.id}`, message: "节点发生重叠。", supportedFix: "移动其中一个节点并保留 manual layout。" });
+    if (overlaps) diagnostics.push({ code: "NODE_OVERLAP", severity: "warning", subject: `${a.id}, ${b.id}`, message: "节点发生重叠。", supportedFix: "移动其中一个节点并保留手动布局。" });
   }
-  for (const item of state.evidence) if (item.verificationStatus === "invalid") diagnostics.push({ code: "UNKNOWN_SOURCE", severity: "warning", subject: item.path || item.id, message: "Evidence 路径、行号或 40 位 Commit SHA 无效。", supportedFix: "修正证据后重新验证。" });
+  for (const item of state.evidence) if (item.verificationStatus === "invalid") diagnostics.push({ code: "UNKNOWN_SOURCE", severity: "warning", subject: item.path || item.id, message: "证据路径、行号或 40 位 Commit SHA 无效。", supportedFix: "修正证据后重新验证。" });
   return diagnostics;
 }
 
@@ -471,7 +477,7 @@ export function createProject(input: { name: string; goal: string; workspacePath
   const nodes = [root, ...modules.map((module, index) => seedNode({ id: module.id, name: module.name, type: index === modules.length - 1 ? "database" : "domain", parentId: id, x: 430 + (index % 2) * 320, y: 100 + Math.floor(index / 2) * 250 }))];
   const edges = modules.map((module) => ({ id: `edge-${module.id}`, stableKey: `${id}.contains.${module.id}`, sourceNodeId: id, targetNodeId: module.id, type: "contains" as EdgeType, label: "包含", layer: "structure" as const }));
   const timestamp = now();
-  return { project: { id, name: input.name.trim(), description: "", goal: input.goal.trim(), workspacePath: input.workspacePath.trim(), repositoryUrl: input.repositoryUrl.trim(), defaultBranch: "main", architectThreadId: uid("architect"), mode: input.mode, status: "active" }, blueprint: { goal: input.goal.trim(), inScope: modules.map((module) => module.name), outOfScope: [], techStack: [], principles: ["Plan 与 Reality 分离", "人工确认完成"], constraints: ["本地优先"], majorModules: modules.map((module) => module.name), dataStrategy: "待 Project Architect 确认", securityStrategy: "待 Project Architect 确认", deploymentStrategy: "待 Project Architect 确认", codingRules: ["稳定 ID 不随名称变化"], acceptanceDefinition: ["核心验收场景通过"], status: "draft" }, graphVersion: 1, revision: 1, nodes, edges, conversations: [{ id: uid("conv"), nodeId: null, type: "architect", role: "primary", title: "Project Architect", threadId: uid("thread"), codexProjectId: id, codexProjectKind: "workspace", codexHostId: "local", workspacePath: input.workspacePath.trim(), summary: "等待确认 Project Blueprint。", createdAt: timestamp, updatedAt: timestamp }], checkpoints: [], evidence: [], decisions: [], updatedAt: timestamp };
+  return { project: { id, name: input.name.trim(), description: "", goal: input.goal.trim(), workspacePath: input.workspacePath.trim(), repositoryUrl: input.repositoryUrl.trim(), defaultBranch: "main", architectThreadId: uid("architect"), mode: input.mode, status: "active" }, blueprint: { goal: input.goal.trim(), inScope: modules.map((module) => module.name), outOfScope: [], techStack: [], principles: ["计划与现实分离", "人工确认完成"], constraints: ["本地优先"], majorModules: modules.map((module) => module.name), dataStrategy: "待 Project Architect 确认", securityStrategy: "待 Project Architect 确认", deploymentStrategy: "待 Project Architect 确认", codingRules: ["稳定 ID 不随名称变化"], acceptanceDefinition: ["核心验收场景通过"], status: "draft" }, graphVersion: 1, revision: 1, nodes, edges, conversations: [{ id: uid("conv"), nodeId: null, type: "architect", role: "primary", title: "Project Architect", threadId: uid("thread"), codexProjectId: id, codexProjectKind: "workspace", codexHostId: "local", workspacePath: input.workspacePath.trim(), summary: "等待确认 Project Blueprint。", createdAt: timestamp, updatedAt: timestamp }], checkpoints: [], evidence: [], decisions: [], updatedAt: timestamp };
 }
 
 export function confirmBlueprint(state: ProjectState, blueprint: Blueprint, expectedRevision: number) {
