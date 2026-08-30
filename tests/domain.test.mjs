@@ -14,6 +14,9 @@ import {
   createSeedState,
   moveNode,
   projectSnapshot,
+  deleteEdge,
+  updateEdge,
+  updateNodeLayouts,
   updateNodeLayout,
   validateGraph,
 } from "../lib/domain.ts";
@@ -147,4 +150,32 @@ test("Blueprint confirmation creates a new graph version", () => {
   assert.equal(next.blueprint.status, "confirmed");
   assert.equal(next.graphVersion, state.graphVersion + 1);
   assert.equal(next.revision, state.revision + 1);
+});
+
+test("multiple selected nodes move in one optimistic revision", () => {
+  const state = createSeedState();
+  const next = updateNodeLayouts(state, [
+    { id: "auth.login", x: 812.4, y: 171.6 },
+    { id: "auth.token", x: 812.4, y: 331.6 },
+  ], state.revision);
+  assert.equal(next.revision, state.revision + 1);
+  assert.deepEqual(
+    next.nodes.filter((node) => ["auth.login", "auth.token"].includes(node.id)).map(({ id, x, y }) => ({ id, x, y })),
+    [
+      { id: "auth.login", x: 812, y: 172 },
+      { id: "auth.token", x: 812, y: 332 },
+    ],
+  );
+});
+
+test("an edge relationship can be edited and deleted without changing its id", () => {
+  const state = createSeedState();
+  const edgeId = "edge-login-token";
+  const updated = updateEdge(state, edgeId, "depends_on", state.revision);
+  const edge = updated.edges.find((item) => item.id === edgeId);
+  assert.equal(edge.type, "depends_on");
+  assert.equal(edge.label, "依赖");
+  assert.equal(edge.id, edgeId);
+  const deleted = deleteEdge(updated, edgeId, updated.revision);
+  assert.equal(deleted.edges.some((item) => item.id === edgeId), false);
 });

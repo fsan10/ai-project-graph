@@ -351,6 +351,27 @@ export function updateNodeLayout(state: ProjectState, nodeId: string, x: number,
   return updateNode(state, nodeId, { x: Math.round(x), y: Math.round(y), layoutMode: "manual" }, expectedRevision);
 }
 
+export function updateNodeLayouts(
+  state: ProjectState,
+  positions: Array<{ id: string; x: number; y: number }>,
+  expectedRevision: number,
+) {
+  assertRevision(state, expectedRevision);
+  const next = clone(state);
+  const uniquePositions = new Map(positions.map((position) => [position.id, position]));
+  for (const position of uniquePositions.values()) {
+    const node = next.nodes.find((item) => item.id === position.id);
+    if (!node) throw new DomainError("NODE_NOT_FOUND", `节点 ${position.id} 不存在。`);
+    if (node.layoutLocked) continue;
+    node.x = Math.round(position.x);
+    node.y = Math.round(position.y);
+    node.layoutMode = "manual";
+    node.version += 1;
+    node.updatedAt = now();
+  }
+  return bump(next);
+}
+
 export function createNode(state: ProjectState, input: Pick<ArchitectureNode, "id" | "name" | "type"> & Partial<ArchitectureNode>, expectedRevision: number) {
   assertRevision(state, expectedRevision);
   if (!/^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/.test(input.id)) throw new DomainError("INVALID_STABLE_ID", "稳定 ID 只能由小写字母、数字和 ._- 组成，且必须以字母开头。");
@@ -368,6 +389,33 @@ export function createEdge(state: ProjectState, sourceNodeId: string, targetNode
   if (state.edges.some((edge) => edge.sourceNodeId === sourceNodeId && edge.targetNodeId === targetNodeId && edge.type === type)) throw new DomainError("DUPLICATE_EDGE", "相同关系已存在。");
   const next = clone(state);
   next.edges.push({ id: uid("edge"), stableKey: `${sourceNodeId}.${type}.${targetNodeId}`, sourceNodeId, targetNodeId, type, label: edgeLabels[type], layer: type === "contains" ? "structure" : ["calls", "reads", "writes", "produces", "consumes", "publishes", "subscribes", "authenticates"].includes(type) ? "runtime" : "execution" });
+  return bump(next);
+}
+
+export function updateEdge(state: ProjectState, edgeId: string, type: EdgeType, expectedRevision: number) {
+  assertRevision(state, expectedRevision);
+  const next = clone(state);
+  const edge = next.edges.find((item) => item.id === edgeId);
+  if (!edge) throw new DomainError("EDGE_NOT_FOUND", `连线 ${edgeId} 不存在。`);
+  if (next.edges.some((item) => item.id !== edgeId && item.sourceNodeId === edge.sourceNodeId && item.targetNodeId === edge.targetNodeId && item.type === type)) {
+    throw new DomainError("DUPLICATE_EDGE", "相同关系已存在。");
+  }
+  edge.type = type;
+  edge.label = edgeLabels[type];
+  edge.stableKey = `${edge.sourceNodeId}.${type}.${edge.targetNodeId}`;
+  edge.layer = type === "contains"
+    ? "structure"
+    : ["calls", "reads", "writes", "produces", "consumes", "publishes", "subscribes", "authenticates"].includes(type)
+      ? "runtime"
+      : "execution";
+  return bump(next);
+}
+
+export function deleteEdge(state: ProjectState, edgeId: string, expectedRevision: number) {
+  assertRevision(state, expectedRevision);
+  if (!state.edges.some((item) => item.id === edgeId)) throw new DomainError("EDGE_NOT_FOUND", `连线 ${edgeId} 不存在。`);
+  const next = clone(state);
+  next.edges = next.edges.filter((item) => item.id !== edgeId);
   return bump(next);
 }
 

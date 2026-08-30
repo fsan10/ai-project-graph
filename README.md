@@ -1,24 +1,24 @@
-# AI Project Graph
+# AI 项目图谱
 
-> Stop managing AI coding by chat. Manage it by architecture.
+AI 项目图谱是一个以软件架构为主目录的 AI 编程工作台。架构节点是长期实体；Codex 会话、任务、代码证据、Git 与检查点都是节点下的工作记录和事实来源。
 
-AI Project Graph 是一个以软件架构为主目录的 AI Coding 工作台。Architecture Node 是长期实体；Codex Conversation、任务、代码证据、Git 与 Checkpoint 都是节点下的工作记录和事实来源。
+## 核心能力
 
-## MVP 能力
-
-- 创建 Greenfield、Existing 或 Hybrid 项目，并自动建立 Project Architect。
-- 编辑和确认结构化 Project Blueprint，确认后递增 Graph Version。
-- 使用稳定 ID 管理 Node / Edge / Hierarchy。
-- 在无限画布中平移、缩放、拖动、搜索、创建节点和连接关系。
-- Architecture、Dependency、Progress、Runtime、Evidence 五种 Lens 共享同一份图数据。
-- 保存完整 Codex Binding：Thread、Project、Project Kind、Host 与 Workspace。
-- 按 Global + Dependency + Node + Current Thread 四层编译最小上下文。
-- Agent 只能将节点推进到 In Review；Done 只能由用户执行 Accept & Complete。
-- 人工完成时自动创建 Checkpoint，并更新 Project State。
-- Repository Evidence 采用 fail-closed 校验：相对路径、合法行号与 40 位 Commit SHA 缺一不可。
-- 所有写入都使用全局 revision 与 Node version；旧 revision 会返回 VERSION_CONFLICT。
-- Graph Diagnostics 检查稳定 ID、父级循环、未知端点、依赖循环、节点重叠、无 Checkpoint 的 Done 与无效 Evidence。
-- 项目以 JSON 快照导入/导出；浏览器版本默认保存在当前设备。
+- 创建新项目、现有仓库项目或计划与现实并行项目，并自动建立项目架构师。
+- 编辑和确认结构化项目蓝图，确认后递增图谱版本。
+- 使用稳定标识管理节点、连线与层级。
+- 支持空格平移画布、滚轮缩放、虚线框选、Ctrl 多选、Shift 连续选择和多节点组移动。
+- 支持从节点四周直接拖出连线，选中连线后修改关系或删除。
+- 支持画布与节点右键菜单，快速新建节点、会话、临时会话、证据和修改状态。
+- 架构、依赖、进度、运行时、证据五种视图共享同一份图数据。
+- 保存完整 Codex 绑定信息：会话、项目、项目类型、宿主与工作区。
+- 按全局、依赖、节点、当前会话四层编译最小上下文。
+- 智能体只能将节点推进到待验收；已完成只能由用户确认。
+- 人工完成时自动创建检查点，并更新项目状态。
+- 代码仓库证据采用默认拒绝校验：相对路径、合法行号与 40 位提交哈希缺一不可。
+- 所有写入都使用全局修订号与节点版本；旧修订号会被乐观锁拒绝。
+- 图谱诊断检查稳定标识、父级循环、未知端点、依赖循环、节点重叠、无检查点完成和无效证据。
+- 支持多个本地项目快速切换、项目文件夹选择，以及项目快照导入和导出。
 
 ## 本地运行
 
@@ -37,9 +37,11 @@ npm run lint
 npm test
 ~~~
 
-## Codex Bridge 契约
+## Codex 菜单集成
 
-用户点击已绑定 Conversation 时，页面会派发：
+页面会根据系统外观自动切换深浅色，也能接收 Codex 宿主发送的主题消息。项目下拉菜单提供“下载 Codex 菜单集成脚本”，对应文件为 `public/codex-project-graph.user.js`。脚本会在 Codex 侧边栏添加“项目图谱”入口，并用内嵌页面打开工作台。
+
+用户点击已绑定会话时，页面同时派发浏览器事件并向父级宿主发送消息：
 
 ~~~js
 window.addEventListener("ai-project-graph:open-conversation", (event) => {
@@ -52,8 +54,8 @@ window.addEventListener("ai-project-graph:open-conversation", (event) => {
 });
 ~~~
 
-桌面壳或 Codex 注入层只需要监听这个事件并打开对应原生 Thread。浏览器独立运行时会复制 Thread ID，确保绑定信息不会丢失。
+浏览器独立运行时会复制会话标识，确保绑定信息不会丢失。
 
 ## 设计边界
 
-本版本完成 PRD 的 P0 验收闭环。P1 的 Architecture Delta、Target vs Current、Decision Log、Global Search、Git Branch / Worktree 与 P2 的 Repository 自动发现、多 Agent 调度仍保留在后续 Graph Version 中，不会被伪装成已经实现。
+本版本完成产品需求文档的首要验收闭环。架构变更、目标与现状对照、决策日志、全局搜索、Git 分支与工作树，以及代码仓库自动发现、多智能体调度，仍保留在后续图谱版本中，不会被伪装成已经实现。

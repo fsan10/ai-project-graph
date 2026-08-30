@@ -3,33 +3,80 @@
 @import "../vendor/shadcn-tailwind-4.13.0.css";
 
 :root {
-  --background: #0b1018;
-  --foreground: #e8edf4;
-  --card: #111925;
-  --card-foreground: #e8edf4;
-  --popover: #121b28;
-  --popover-foreground: #e8edf4;
-  --primary: #23c9b5;
-  --primary-foreground: #06110f;
-  --secondary: #172230;
-  --secondary-foreground: #dce5ee;
-  --muted: #17202d;
-  --muted-foreground: #8e9caf;
-  --accent: #1b2938;
-  --accent-foreground: #eef5f7;
-  --destructive: #f87171;
-  --border: #263445;
-  --input: #2a394a;
-  --ring: #23c9b5;
-  --radius: 0.625rem;
-  --sidebar: #0d141e;
-  --sidebar-foreground: #d7e0ea;
-  --sidebar-primary: #23c9b5;
-  --sidebar-primary-foreground: #06110f;
-  --sidebar-accent: #162330;
-  --sidebar-accent-foreground: #eef5f7;
-  --sidebar-border: #202d3c;
-  --sidebar-ring: #23c9b5;
+  --background: #fcfcfd;
+  --foreground: #1b1b1b;
+  --card: #ffffff;
+  --card-foreground: #1b1b1b;
+  --popover: #ffffff;
+  --popover-foreground: #1b1b1b;
+  --primary: #317cff;
+  --primary-foreground: #ffffff;
+  --secondary: #f3f3f4;
+  --secondary-foreground: #353537;
+  --muted: #f3f3f4;
+  --muted-foreground: #6d6d70;
+  --accent: #ececed;
+  --accent-foreground: #1b1b1b;
+  --destructive: #d93036;
+  --border: #e1e1e1;
+  --input: #d5d5d6;
+  --ring: #317cff;
+  --radius: 0.5rem;
+  --sidebar: #f3f3f4;
+  --sidebar-foreground: #353537;
+  --sidebar-primary: #317cff;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #e7e7e8;
+  --sidebar-accent-foreground: #1b1b1b;
+  --sidebar-border: #dedee0;
+  --sidebar-ring: #317cff;
+  --surface: #ffffff;
+  --surface-raised: #ffffff;
+  --surface-hover: #f6f6f7;
+  --surface-active: #ececed;
+  --text-primary: #1b1b1b;
+  --text-secondary: #5d5d5f;
+  --text-tertiary: #8e8e92;
+  --canvas-grid: rgba(72, 72, 78, 0.09);
+  --shadow-color: rgba(0, 0, 0, 0.12);
+}
+
+:root[data-theme="dark"] {
+  --background: #171719;
+  --foreground: #eeeeef;
+  --card: #222225;
+  --card-foreground: #eeeeef;
+  --popover: #27272a;
+  --popover-foreground: #eeeeef;
+  --primary: #317cff;
+  --primary-foreground: #ffffff;
+  --secondary: #29292c;
+  --secondary-foreground: #dedee1;
+  --muted: #29292c;
+  --muted-foreground: #a3a3a8;
+  --accent: #37373c;
+  --accent-foreground: #eeeeef;
+  --destructive: #ff6b70;
+  --border: rgba(255, 255, 255, 0.11);
+  --input: rgba(255, 255, 255, 0.16);
+  --ring: #5d93ff;
+  --sidebar: #151517;
+  --sidebar-foreground: #dedee1;
+  --sidebar-primary: #317cff;
+  --sidebar-primary-foreground: #ffffff;
+  --sidebar-accent: #303034;
+  --sidebar-accent-foreground: #eeeeef;
+  --sidebar-border: rgba(255, 255, 255, 0.09);
+  --sidebar-ring: #5d93ff;
+  --surface: #222225;
+  --surface-raised: #27272a;
+  --surface-hover: #303034;
+  --surface-active: #37373c;
+  --text-primary: #eeeeef;
+  --text-secondary: #b8b8bd;
+  --text-tertiary: #85858b;
+  --canvas-grid: rgba(255, 255, 255, 0.065);
+  --shadow-color: rgba(0, 0, 0, 0.36);
 }
 
 @theme inline {
@@ -1352,5 +1399,366 @@ button {
   }
   .blueprint-grid .form-field:first-child {
     grid-column: auto;
+  }
+}
+
+/* Codex 外观适配与画布编辑器交互 */
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-size: 12px;
+  font-weight: 450;
+}
+
+.app-shell {
+  background: var(--background);
+}
+
+.topbar {
+  border-color: var(--border);
+  background: color-mix(in srgb, var(--background) 96%, transparent);
+  box-shadow: 0 1px 8px var(--shadow-color);
+}
+
+.brand-lockup {
+  border-color: var(--sidebar-border);
+}
+
+.brand-mark {
+  color: var(--primary);
+  border-color: color-mix(in srgb, var(--primary) 35%, var(--border));
+  background: color-mix(in srgb, var(--primary) 8%, transparent);
+  box-shadow: none;
+}
+
+.brand-lockup strong,
+.project-crumb strong {
+  color: var(--text-primary);
+}
+
+.brand-lockup span,
+.project-crumb span,
+.revision-badge,
+.zoom-value {
+  color: var(--text-tertiary);
+}
+
+.project-crumb {
+  width: fit-content;
+  min-width: 190px;
+  height: 42px;
+  margin-left: 8px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  color: var(--text-secondary);
+  background: transparent;
+  text-align: left;
+}
+
+.project-crumb:hover,
+.project-crumb[data-state="open"] {
+  background: var(--surface-hover);
+}
+
+.project-crumb-copy {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+}
+
+.project-switcher-menu {
+  width: 270px;
+}
+
+.project-switcher-menu [data-slot="dropdown-menu-item"] {
+  min-height: 32px;
+}
+
+.status-light {
+  background: #35a854;
+  box-shadow: none;
+}
+
+.diagnostic-pill {
+  color: #247642;
+  border-color: color-mix(in srgb, #35a854 28%, var(--border));
+  background: color-mix(in srgb, #35a854 7%, transparent);
+}
+
+:root[data-theme="dark"] .diagnostic-pill {
+  color: #78d895;
+}
+
+.workspace,
+.left-rail,
+.detail-panel,
+.canvas-column,
+.canvas-toolbar,
+.lens-tabs {
+  border-color: var(--border);
+}
+
+.left-rail,
+.detail-panel {
+  background: var(--sidebar);
+}
+
+.canvas-column,
+.graph-canvas {
+  background: var(--background);
+}
+
+.canvas-toolbar,
+.lens-tabs {
+  background: var(--surface);
+}
+
+.search-box {
+  color: var(--text-tertiary);
+  border-color: var(--border);
+  background: var(--surface-hover);
+}
+
+.search-box input {
+  color: var(--text-primary);
+}
+
+.toolbar-divider {
+  background: var(--border);
+}
+
+.graph-canvas {
+  cursor: default;
+  user-select: none;
+}
+
+.graph-canvas.space-pan {
+  cursor: grab;
+}
+
+.graph-canvas.panning {
+  cursor: grabbing;
+}
+
+.graph-canvas.connecting {
+  cursor: crosshair;
+}
+
+.canvas-grid {
+  background-image:
+    linear-gradient(var(--canvas-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--canvas-grid) 1px, transparent 1px),
+    radial-gradient(circle, color-mix(in srgb, var(--text-tertiary) 26%, transparent) 1px, transparent 1px);
+}
+
+.graph-node {
+  overflow: visible;
+  color: var(--text-secondary);
+  border-color: var(--border);
+  background: var(--surface-raised);
+  box-shadow: 0 4px 13px var(--shadow-color);
+  cursor: pointer;
+}
+
+.graph-node:hover {
+  border-color: color-mix(in srgb, var(--primary) 55%, var(--border));
+  box-shadow: 0 5px 18px var(--shadow-color);
+}
+
+.graph-node.selected {
+  color: var(--text-primary);
+  border-color: var(--primary);
+  background: color-mix(in srgb, var(--primary) 7%, var(--surface-raised));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--primary) 22%, transparent), 0 6px 18px var(--shadow-color);
+}
+
+.graph-node:active,
+.graph-node.dragging {
+  cursor: grabbing;
+}
+
+.graph-node > strong {
+  color: var(--text-primary);
+}
+
+.graph-node > small,
+.node-bottom,
+.node-top [data-slot="badge"],
+.canvas-hint {
+  color: var(--text-tertiary);
+}
+
+.node-top .node-icon {
+  color: var(--primary);
+  border-color: color-mix(in srgb, var(--primary) 24%, var(--border));
+  background: color-mix(in srgb, var(--primary) 7%, transparent);
+}
+
+.connection-handle {
+  width: 10px;
+  height: 10px;
+  position: absolute;
+  z-index: 4;
+  opacity: 0;
+  border: 2px solid var(--surface-raised);
+  border-radius: 50%;
+  padding: 0;
+  background: var(--primary);
+  box-shadow: 0 0 0 1px var(--primary);
+  cursor: crosshair;
+  transition: opacity 100ms ease, transform 100ms ease;
+}
+
+.graph-node:hover .connection-handle,
+.graph-node.selected .connection-handle,
+.graph-node.connect-source .connection-handle {
+  opacity: 1;
+}
+
+.connection-handle:hover {
+  transform: scale(1.35);
+}
+
+.connection-handle.top { top: -5px; left: calc(50% - 5px); }
+.connection-handle.right { top: calc(50% - 5px); right: -5px; }
+.connection-handle.bottom { bottom: -5px; left: calc(50% - 5px); }
+.connection-handle.left { top: calc(50% - 5px); left: -5px; }
+
+.edge-layer {
+  pointer-events: none;
+}
+
+.edge-group .edge-hit {
+  pointer-events: stroke;
+  stroke: transparent;
+  stroke-width: 15;
+  opacity: 1;
+  cursor: pointer;
+}
+
+.edge-group .edge-line {
+  stroke-width: 1.5;
+  opacity: 0.72;
+  pointer-events: none;
+}
+
+.edge-group:hover .edge-line,
+.edge-group.selected .edge-line {
+  stroke: var(--primary) !important;
+  stroke-width: 2.5;
+  opacity: 1;
+}
+
+.edge-group text {
+  fill: var(--text-tertiary);
+  paint-order: stroke;
+  stroke: var(--background);
+  stroke-width: 4px;
+  pointer-events: none;
+}
+
+.edge-group.selected text {
+  fill: var(--primary);
+}
+
+.connection-preview {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+  pointer-events: none;
+}
+
+.selection-marquee {
+  position: absolute;
+  z-index: 20;
+  border: 1.5px dashed var(--primary);
+  background: color-mix(in srgb, var(--primary) 10%, transparent);
+  pointer-events: none;
+}
+
+.edge-inspector {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  position: absolute;
+  z-index: 25;
+  top: 12px;
+  right: 12px;
+  max-width: min(520px, calc(100% - 24px));
+  min-height: 40px;
+  padding: 5px 7px 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  color: var(--text-secondary);
+  background: var(--surface-raised);
+  box-shadow: 0 7px 24px var(--shadow-color);
+}
+
+.edge-inspector > span {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--text-tertiary);
+}
+
+.edge-inspector > span svg,
+.edge-inspector > button svg {
+  width: 14px;
+}
+
+.edge-inspector strong {
+  max-width: 220px;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.edge-inspector [data-slot="select-trigger"] {
+  min-width: 92px;
+}
+
+.canvas-context-menu,
+.node-context-menu {
+  min-width: 210px;
+}
+
+.canvas-context-menu [data-slot="context-menu-item"],
+.node-context-menu [data-slot="context-menu-item"],
+.node-context-menu [data-slot="context-menu-sub-trigger"] {
+  min-height: 30px;
+  font-size: 12px;
+}
+
+.checkbox-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+}
+
+.checkbox-field input {
+  accent-color: var(--primary);
+}
+
+.app-shell.embedded .topbar {
+  grid-template-columns: minmax(220px, 1fr) auto;
+}
+
+.app-shell.embedded .brand-lockup {
+  display: none;
+}
+
+.app-shell.embedded .project-crumb {
+  margin-left: 10px;
+}
+
+@media (max-width: 900px) {
+  .edge-inspector strong {
+    display: none;
   }
 }

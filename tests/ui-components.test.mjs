@@ -43,7 +43,20 @@ test("emits the Project Graph canvas, status, scrolling, and responsive styles",
   assert.match(css, /\.graph-canvas/);
   assert.match(css, /\.graph-node/);
   assert.match(css, /\.status-review/);
+  assert.match(css, /\.selection-marquee/);
+  assert.match(css, /\.connection-handle/);
+  assert.match(css, /\.edge-inspector/);
+  assert.match(css, /\.graph-canvas\.space-pan/);
   assert.match(css, /@media\s*\((?:max-width:\s*900px|width<=900px)\)/);
+});
+
+test("ships a Codex sidebar bridge with theme and host synchronization", async () => {
+  const bridge = await readFile(path.join(root, "public/codex-project-graph.user.js"), "utf8");
+  assert.match(bridge, /项目图谱/);
+  assert.match(bridge, /ai-project-graph:theme/);
+  assert.match(bridge, /ai-project-graph:host-context/);
+  assert.match(bridge, /ai-project-graph:frame-ready/);
+  assert.match(bridge, /MutationObserver/);
 });
 
 test("forwards progress semantics to the primitive", async () => {
