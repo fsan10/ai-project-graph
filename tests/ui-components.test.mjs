@@ -1,0 +1,107 @@
+import assert from "node:assert/strict";
+import { readdir, readFile } from "node:fs/promises";
+import path from "node:path";
+import test, { after } from "node:test";
+import { fileURLToPath } from "node:url";
+
+import React from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { createServer } from "vite";
+
+const root = fileURLToPath(new URL("..", import.meta.url));
+const vite = await createServer({
+  appType: "custom",
+  configFile: false,
+  root,
+  resolve: { alias: { "@": root } },
+  server: { middlewareMode: true },
+});
+
+after(async () => {
+  await vite.close();
+});
+
+async function readCssTree(directory) {
+  const entries = await readdir(directory, { withFileTypes: true });
+  const contents = await Promise.all(
+    entries.map(async (entry) => {
+      const entryPath = path.join(directory, entry.name);
+      if (entry.isDirectory()) {
+        return readCssTree(entryPath);
+      }
+      return entry.name.endsWith(".css") ? readFile(entryPath, "utf8") : "";
+    }),
+  );
+  return contents.join("\n");
+}
+
+test("emits the Project Graph canvas, status, scrolling, and responsive styles", async () => {
+  const css = await readCssTree(path.join(root, "dist"));
+
+  assert.match(css, /--tw-enter-opacity/);
+  assert.match(css, /scrollbar-width:\s*thin/);
+  assert.match(css, /\.graph-canvas/);
+  assert.match(css, /\.graph-node/);
+  assert.match(css, /\.status-review/);
+  assert.match(css, /\.selection-marquee/);
+  assert.match(css, /\.connection-handle/);
+  assert.match(css, /\.edge-inspector/);
+  assert.match(css, /\.graph-canvas\.space-pan/);
+  assert.match(css, /\.canvas-world\s*\{[^}]*pointer-events:\s*none/s);
+  assert.match(css, /\.open-left\s*\{[^}]*position:\s*static/s);
+  assert.match(css, /body[\s\S]*font-size:\s*14px/);
+  assert.match(css, /@media\s*\((?:max-width:\s*900px|width<=900px)\)/);
+});
+
+test("uses one target-aware context menu and no hidden search shortcut", async () => {
+  const source = await readFile(path.join(root, "components/project-graph/ProjectGraphApp.tsx"), "utf8");
+  assert.equal((source.match(/<ContextMenu(?:\s|>)/g) ?? []).length, 1);
+  assert.match(source, /onContextMenuCapture/);
+  assert.match(source, /data-edge-id/);
+  assert.doesNotMatch(source, /<kbd>⌘K<\/kbd>/);
+});
+
+test("ships a Codex sidebar bridge with theme and host synchronization", async () => {
+  const bridge = await readFile(path.join(root, "public/codex-project-graph.user.js"), "utf8");
+  assert.match(bridge, /项目图谱/);
+  assert.match(bridge, /ai-project-graph:theme/);
+  assert.match(bridge, /ai-project-graph:host-context/);
+  assert.match(bridge, /ai-project-graph:frame-ready/);
+  assert.match(bridge, /MutationObserver/);
+});
+
+test("forwards progress semantics to the primitive", async () => {
+  const { Progress } = await vite.ssrLoadModule("/components/ui/progress.tsx");
+  const html = renderToStaticMarkup(React.createElement(Progress, { value: 37 }));
+
+  assert.match(html, /aria-valuenow="37"/);
+  assert.match(html, /aria-valuetext="37%"/);
+  assert.match(html, /data-state="loading"/);
+});
+
+test("emits chart themes for the starter's media dark mode", async () => {
+  const { ChartStyle } = await vite.ssrLoadModule("/components/ui/chart.tsx");
+  const html = renderToStaticMarkup(
+    React.createElement(ChartStyle, {
+      id: "contract",
+      config: {
+        latency: { theme: { light: "#ffffff", dark: "#000000" } },
+      },
+    }),
+  );
+
+  assert.match(html, /\[data-chart=contract\]/);
+  assert.match(html, /@media \(prefers-color-scheme: dark\)/);
+  assert.doesNotMatch(html, /\.dark/);
+});
+
+test("renders sidebar skeletons deterministically", async () => {
+  const { SidebarMenuSkeleton } = await vite.ssrLoadModule(
+    "/components/ui/sidebar.tsx",
+  );
+  const first = renderToStaticMarkup(React.createElement(SidebarMenuSkeleton));
+  const second = renderToStaticMarkup(React.createElement(SidebarMenuSkeleton));
+
+  assert.equal(first, second);
+  assert.match(first, /--skeleton-width:70%/);
+});
