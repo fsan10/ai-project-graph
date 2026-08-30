@@ -200,7 +200,9 @@
     installStyles();
     const reference = referenceButton(root);
     if (!entry) {
-      entry = cleanClonedButton(reference?.cloneNode(true) || document.createElement("button"));
+      const fallback = document.createElement("button");
+      fallback.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="2"></circle><circle cx="19" cy="6" r="2"></circle><circle cx="19" cy="18" r="2"></circle><path d="M7 12h4a4 4 0 0 0 4-4V6m-4 6a4 4 0 0 1 4 4v2"></path></svg><span></span>`;
+      entry = cleanClonedButton(reference?.cloneNode(true) || fallback);
       entry.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
