@@ -1,5 +1,5 @@
-import { ProjectGraphApp } from "@/components/project-graph/ProjectGraphApp";
+import { PlanningWorkspace } from "@/components/project-graph/PlanningWorkspace";
 
 export default function Home() {
-  return <ProjectGraphApp />;
+  return <PlanningWorkspace />;
 }

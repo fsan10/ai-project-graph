@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI 项目图谱 for Codex
 // @namespace    https://ai-project-graph.jz1234da.chatgpt.site/
-// @version      0.2.0
+// @version      0.4.0
 // @description  在 Codex 侧边栏添加“项目图谱”入口
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
@@ -15,19 +15,29 @@
 (() => {
   "use strict";
 
-  const SITE_URL = "https://ai-project-graph.jz1234da.chatgpt.site/?host=codex";
+  const INJECTION_VERSION = "0.4.0";
+  // The resident injector fills an about:blank iframe with this local page via
+  // CDP. Loading the hosted Sites URL directly would be rejected by X-Frame-
+  // Options and by the Sites sign-in gate in the Codex renderer.
+  const SITE_URL = "http://127.0.0.1:5173/index.html?host=codex";
   const SENTINEL_KEY = "__aiProjectGraphCodexInjection__";
   const ENTRY_ID = "ai-project-graph-codex-entry";
   const PAGE_ID = "ai-project-graph-codex-page";
   const FRAME_ID = "ai-project-graph-codex-frame";
+  const FRAME_URL_ATTRIBUTE = "data-ai-project-graph-frame-url";
   const STYLE_ID = "ai-project-graph-codex-style";
   const OWNED_ATTRIBUTE = "data-ai-project-graph-owned";
   const REATTACH_DELAY = 120;
 
   const previous = window[SENTINEL_KEY];
-  if (previous && typeof previous.refresh === "function") {
+  if (previous?.version === INJECTION_VERSION && typeof previous.refresh === "function") {
     previous.refresh();
     return;
+  }
+  try {
+    previous?.destroy?.();
+  } catch (_) {
+    // A previous development version may not expose destroy().
   }
 
   let entry = null;
@@ -99,6 +109,8 @@
         overflow: hidden;
         background: Canvas;
         color: CanvasText;
+        pointer-events: auto;
+        -webkit-app-region: no-drag;
       }
       #${PAGE_ID}[data-fallback="true"] {
         position: fixed;
@@ -107,10 +119,14 @@
       #${PAGE_ID}[hidden] { display: none !important; }
       #${FRAME_ID} {
         display: block;
+        position: relative;
+        z-index: 1;
         width: 100%;
         height: 100%;
         border: 0;
         background: Canvas;
+        pointer-events: auto;
+        -webkit-app-region: no-drag;
       }
     `;
     (document.head || document.documentElement).appendChild(style);
@@ -229,9 +245,19 @@
     frame = document.createElement("iframe");
     frame.id = FRAME_ID;
     frame.title = hostText("AI 项目图谱", "AI Project Graph");
-    frame.src = frameUrl();
+    frame.name = `ai-project-graph-codex-${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`}`;
+    frame.setAttribute("data-ai-project-graph-frame", "true");
+    frame.setAttribute(FRAME_URL_ATTRIBUTE, frameUrl());
+    frame.referrerPolicy = "no-referrer";
     frame.allow = "clipboard-read; clipboard-write";
-    frame.addEventListener("load", postHostContext);
+    frame.tabIndex = 0;
+    frame.addEventListener("load", () => {
+      postHostContext();
+      if (active) window.requestAnimationFrame(() => frame?.focus({ preventScroll: true }));
+    });
+    // The injector replaces this blank document with the local application
+    // HTML using Page.setDocumentContent, avoiding remote iframe policies.
+    frame.src = "about:blank";
     page.append(frame);
     document.body.append(page);
     return page;
@@ -272,6 +298,7 @@
     document.documentElement.setAttribute("data-ai-project-graph-open", "true");
     syncEntryState();
     postHostContext();
+    window.requestAnimationFrame(() => frame?.focus({ preventScroll: true }));
   };
 
   const togglePage = () => {
@@ -323,7 +350,7 @@
     if (window[SENTINEL_KEY] === api) delete window[SENTINEL_KEY];
   };
 
-  const api = { refresh, open: openPage, close: closePage, destroy };
+  const api = { version: INJECTION_VERSION, refresh, open: openPage, close: closePage, destroy };
   window[SENTINEL_KEY] = api;
   window.addEventListener("message", onFrameMessage);
   document.addEventListener("click", onDocumentClick, true);
