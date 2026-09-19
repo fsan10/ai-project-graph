@@ -2,9 +2,10 @@ import { spawn } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { fileURLToPath } from "node:url";
+import { createHash } from "node:crypto";
 
 const DEFAULT_PORT = 9231;
-const DEFAULT_APP_URL = "http://127.0.0.1:5173/index.html?host=codex";
+const DEFAULT_APP_URL = "http://127.0.0.1:5173/codex-native.html?host=codex";
 const ENTRY_ID = "ai-project-graph-codex-entry";
 const FRAME_ID = "ai-project-graph-codex-frame";
 const FRAME_URL_ATTRIBUTE = "data-ai-project-graph-frame-url";
@@ -31,7 +32,7 @@ let parsedAppUrl;
 try {
   parsedAppUrl = new URL(appUrl);
   if (!/^https?:$/.test(parsedAppUrl.protocol)) throw new Error("unsupported protocol");
-} catch (_) {
+} catch {
   throw new Error(`--app-url 不是有效的 HTTP(S) 地址: ${appUrl}`);
 }
 
@@ -76,7 +77,7 @@ async function isAppReachable() {
       signal: AbortSignal.timeout(1_200),
     });
     return response.ok;
-  } catch (_) {
+  } catch {
     return false;
   }
 }
@@ -154,10 +155,8 @@ async function ensureAppServer() {
             response.setHeader(name, value);
           }
         });
-        // Page.setDocumentContent creates an opaque (about:blank) frame origin.
-        // Vite's browser entry is an ES module, so the frame loads it through a
-        // CORS request; without this header the page renders SSR HTML but the
-        // client never hydrates and every control appears inert.
+        // The child frame navigates to this loopback proxy, keeping HTML,
+        // static assets, and API calls on one local origin.
         response.setHeader("access-control-allow-origin", "*");
         response.setHeader("cross-origin-resource-policy", "cross-origin");
         response.end(request.method === "HEAD" ? undefined : Buffer.from(await upstream.arrayBuffer()));
@@ -187,7 +186,7 @@ async function json(url) {
   let response;
   try {
     response = await fetch(url, { signal: AbortSignal.timeout(3_000) });
-  } catch (_) {
+  } catch {
     throw new Error(
       `无法连接 Codex CDP ${url}。请完全退出 Codex 后，使用 --remote-debugging-port=${port} 重新启动。`,
     );
@@ -293,15 +292,6 @@ async function readFrameInfo(ws) {
   return evaluation.result?.value || null;
 }
 
-function findFrameByName(frameTree, name) {
-  if (frameTree?.frame?.name === name) return frameTree.frame;
-  for (const child of frameTree?.childFrames || []) {
-    const match = findFrameByName(child, name);
-    if (match) return match;
-  }
-  return null;
-}
-
 async function hydrateFrame(ws, target, frameStates) {
   const frameInfo = await readFrameInfo(ws);
   if (!frameInfo?.connected || !frameInfo.name) return false;
@@ -309,20 +299,26 @@ async function hydrateFrame(ws, target, frameStates) {
   if (previous?.name === frameInfo.name && previous.url === appUrl && Date.now() - previous.checkedAt < 5000) return false;
 
   const html = await fetchAppDocument();
-  const token = html.match(/window\.__GRAPH_TOKEN__\s*=\s*"([^"]+)"/)?.[1];
+  const token = createHash("sha256").update(html).digest("hex");
   if (previous?.name === frameInfo.name && previous.url === appUrl && previous.token === token) {
     previous.checkedAt = Date.now();
     return false;
   }
 
-  const { frameTree } = await cdpCall(ws, "Page.getFrameTree");
-  const targetFrame = findFrameByName(frameTree, frameInfo.name);
-  if (!targetFrame) return false;
-
-  await cdpCall(ws, "Page.setDocumentContent", {
-    frameId: targetFrame.id,
-    html,
-  });
+  // Codex's app:// renderer blocks a child frame from navigating directly to
+  // loopback HTTP. srcdoc keeps the child inside the Codex document while the
+  // injected <base> routes assets and API requests through our local proxy.
+  const injection = await evaluate(ws, `(() => {
+    const frame = document.getElementById(${JSON.stringify(FRAME_ID)});
+    if (!frame || !frame.isConnected) return false;
+    frame.removeAttribute("src");
+    frame.srcdoc = ${JSON.stringify(html)};
+    return true;
+  })()`);
+  if (injection.exceptionDetails) {
+    throw new Error(injection.exceptionDetails.exception?.description || "无法载入项目图谱页面");
+  }
+  if (!injection.result?.value) return false;
   frameStates.set(target.id, { name: frameInfo.name, url: appUrl, token, checkedAt: Date.now() });
   console.log(JSON.stringify({ target: target.id, frame: frameInfo.name, page: "loaded" }));
   return true;

@@ -1,69 +1,73 @@
 # AI 项目图谱
 
-在 Codex 中，以主对话规划项目，以架构节点组织执行和多段会话。新版采用真实 Codex App Server，不需要手动创建、复制或绑定对话 ID。
+在 Codex 原生界面中，用可自由拖动的无限画布整理一个项目内的对话。节点是对话分类，包含目标、职责提示词、小任务和交接摘要；每段对话显示真实 Codex 线程 ID，点击后进入原生历史和输入框。
 
-## 使用
+## 启动
 
-要求 Node.js 22.13+、已登录的 Codex CLI（`codex` 在 PATH 中）。当前 Windows Codex 桌面安装附带的可执行程序已验证可用；也可以通过 `CODEX_BIN` 指定路径。
+需要 Node.js 22.13+、已登录的 Codex 桌面和可用的 Codex CLI。可通过 CODEX_BIN 指定 CLI 路径。
 
 ```powershell
 npm install
-npm start
-```
-
-打开 http://127.0.0.1:5173 。本地服务必须保持运行，静态构建本身不包含 Codex 引擎。
-
-已启用 CDP 9231 的 Codex 桌面中运行：
-
-```powershell
+npm run skill:install
 npm run codex
 ```
 
-启动器自动启动本地工作台，并在 Codex 侧边栏添加、打开“项目图谱”。指定其他调试端口可运行 `node scripts/codex-project-graph-injector.mjs --port 端口 --watch --open`。普通浏览器也可以使用完整聊天功能。没有 CDP 的桌面可在原生浏览器面板打开本地地址；启动器不会强制退出或修改 Codex 安装文件。
+启动器构建界面、连接可用的 Codex 调试窗口，并在侧边栏添加“项目图谱”。Windows 上没有可用调试窗口时，会启动独立用户配置的 Codex 窗口，原有窗口继续运行。保持启动命令运行；退出后重新运行即可。不会修改 Codex 安装包。
 
-## 工作流程
+已有指定 CDP 端口时：
 
-1. 新工作台只有一个空白主对话，没有预置架构或示例任务。开始前可设置项目代码目录。
-2. 在主对话持续沟通目标、范围、技术约束和验收标准；规划阶段使用只读沙箱。
-3. 点击“生成架构草案”，AI 根据已有对话产生项目共识、节点目标、职责提示词、依赖和小任务。
-4. 查看架构图，继续沟通、重新生成，或点击“确认框架”。确认前不能开启节点执行。
-5. 进入节点，直接开始对话。线程由服务创建和管理，同一对话自动续接。每个节点支持多段独立对话。
-6. 新对话获取项目共识、节点职责、任务和直接依赖的交接摘要，不复制其他聊天历史。每次节点回复更新交接摘要，也可主动生成阶段摘要。
-7. Codex 的任务报告更新侧边看板，并附验证证据。AI 最多提交“待验收”；用户验收为“已完成”。依赖未验收时，下游节点仅能只读讨论。
+```powershell
+npm run build
+node scripts/codex-project-graph-injector.mjs --port 9232 --watch --open
+```
 
-支持流式文字、命令/文件操作记录、停止生成、命令批准和提问回复。节点之间共享项目工作目录，不是自动建立独立 worktree；请避免同时运行修改相同文件的节点。当前版本由用户在节点发起执行，不会确认架构后自动并行启动所有节点。
+独立浏览器可用 npm start 后打开 http://127.0.0.1:5173 检查图谱；打开和新建原生对话需要 Codex 内的嵌入入口。嵌入页 /codex-native.html 使用构建后的资源，代码修改后重新 npm run build。
 
-## 数据与边界
+## 使用流程
 
-- `.data/workspace-v2.json` 保存当前项目、图谱、任务、对话归属、文字记录和交接摘要；采用临时文件替换写入。
-- Codex 自身保存真实线程；服务重启后自动使用已记录的线程恢复。无需用户填写 ID。
-- 旧版浏览器数据保留，不自动导入新版空白工作台。当前一个服务对应一个工作台，可用 `GRAPH_DATA_DIR` 切换独立数据目录。
-- 本地 API 绑定 loopback，并要求页面持有的随机 capability token；不提供公开云端聊天服务。
-- 上下文交接减少无关历史传递，但没有实测 token 节省比例，也不能保证完全不重新读取代码。
-- 这是使用 Codex 引擎的自定义工作台，不是完整复制桌面原生 UI；模型选择器、附件、diff 审阅器等原生功能尚未全部移植。
+1. 在 Codex 原生界面创建或选择项目、开启对话，输入 `$project-graph` 和项目想法。也可以从图谱的“原生规划对话”进入预填提示的原生输入框。
+2. 在同一原生对话持续沟通，Skill 维护详细开发文档。确认前图谱保持空白，不自动生成示例节点。
+3. 明确确认文档后，Skill 发布节点、依赖和任务。侧边栏“项目图谱”中选择对应的已有 Codex 项目即可查看。
+4. 自由拖动节点、拖动背景平移、滚轮缩放；Shift 多选或框选，Ctrl+A 全选。布局自动保存；新增节点时填写目标和初始职责提示词。
+5. 节点的第一段对话是“记忆主对话”。它使用 Codex 原生输入框，第一阶段只回答、提问和总结，不修改项目代码；与 AI 对齐模块颗粒度、边界和验收标准后，Skill 固化核心记忆。
+6. 记忆确认后，“从节点记忆分支新对话”调用 Codex 原生 `thread/fork`。新线程继承完整对齐历史、自动归入节点并显示真实 ID，无需重复发送记忆或手动绑定。
+7. 点击已有对话进入原生历史并继续聊。已有未分类对话仍可归入节点；删除节点分类保留 Codex 原生对话。
+8. 在画布按 Ctrl+F，仅搜索当前项目的原生对话标题、预览和 ID；勾选历史搜索可检索消息内容。结果由原生 App Server 提供，点击后打开原生对话。
+9. 任务看板同时显示节点状态和节点内小任务。用户将节点标为完成后，图谱自动更新项目状态文档；新节点与新分支都会读取最新完成情况。
 
-## 验证
+## 数据和集成边界
+
+- 项目选择来源是 Codex 已有本地项目；不提供另一套项目创建和文件夹绑定流程。
+- 原生 Codex 管理历史、输入、模型、附件、权限和执行。图谱只保存分类、任务、文档、摘要及真实线程 ID，不复制聊天记录。
+- `.codex/project-graph/project-status.md` 记录所有节点的完成情况；`.codex/project-graph/nodes/` 保存每个节点的稳定核心记忆。详细讨论仍留在原生记忆主对话中。
+- 项目数据存于 .data/native/<projectId>.json，原子写入；旧版数据保留。可用 GRAPH_DATA_DIR 指定独立存储。
+- 本地 API 仅监听 loopback，使用随机访问令牌。Skill 通过 .data/native-runtime.json 连接服务。
+- 当前支持本地 Codex 项目；原生项目归属优先于工作目录，并兼容已归属项目的 worktree 线程。云端项目尚未接入。
+- 原生桥接依赖桌面当前的路由和消息协议，桌面升级后可能需要适配。项目内搜索弹层是扩展界面，打开后的聊天界面是 Codex 原生界面。
+- 节点提供职责和上下文边界，不会自动启动一批后台 agent，也不自动隔离代码目录。是否开始执行由原生对话指令决定。
+- 上下文交接避免传入无关聊天历史，但没有实测 token 节省比例，也不能保证无需重新读取代码。
+
+## 开发与验证
 
 ```powershell
 npm test
 npm run build
-node scripts/smoke-codex.mjs
-node scripts/verify-workspace.mjs
+node scripts/verify-native-graph.mjs
 ```
 
-前两项执行类型、领域验证及前端构建。后两项连接真实 Codex，会使用账户额度；完整验证在 `work/verify-*` 使用独立数据目录，不污染正式空白项目。
+集成验证使用独立临时数据目录，读取真实原生项目与线程，验证项目隔离、确认门槛、自动归类及布局持久化，不向 Codex 发送模型请求。
 
-## 代码入口
+主要入口：
 
-- `components/project-graph/PlanningWorkspace.tsx`：主对话、节点会话、任务看板。
-- `components/project-graph/ArchitectureCanvas.tsx`：按依赖层级排列的架构图。
-- `server/codex-client.mjs`：stdio JSON-RPC、流式事件、交互请求。
-- `server/workspace-plugin.mjs`：本地 API、持久化、线程生命周期、规划确认流程。
-- `server/workspace-domain.mjs`：架构验证、上下文编译和任务报告验证。
-- `scripts/codex-project-graph-injector.mjs`：Codex 侧边栏嵌入和本地资源桥接。
+- components/project-graph/NativeGraphApp.tsx：无限画布、节点弹层、项目内搜索和任务看板。
+- server/native-graph-plugin.mjs：本地 API、原生线程读取、持久化和静态嵌入资源。
+- server/native-graph-domain.mjs：图谱操作、发布确认、节点上下文。
+- server/native-catalog.mjs：原生项目目录与线程归属。
+- public/codex-project-graph.user.js：原生侧边栏入口、原生新建和历史导航。
+- scripts/graphctl.mjs 与 skills/project-graph/：配套 Skill 和自动登记 CLI。
 
-旧版领域模块暂留供迁移和回归测试，新入口不再加载旧版 ProjectGraphApp。原云端构建脚本保留为 `build:site`，不用于新版本地聊天服务。
+旧版自定义聊天组件保留供迁移，新入口不再加载它们。
 
 ## 参考
 
-嵌入方式参考 [dashi-taskboard](https://github.com/chuspeeism/dashi-taskboard#embed-in-codex)。参考项目通过原生输入框发起任务并自动记录归属；本项目额外采用 [Codex App Server](https://learn.chatgpt.com/docs/app-server) 实现在图谱界面内直接聊天。
+原生嵌入和导航方式参考 [dashi-taskboard](https://github.com/chuspeeism/dashi-taskboard#embed-in-codex)，该项目采用 Apache 2.0 许可，见 [第三方说明](THIRD_PARTY_NOTICES.md)。线程读取使用 [Codex App Server](https://learn.chatgpt.com/docs/app-server)。

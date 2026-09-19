@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         AI 项目图谱 for Codex
 // @namespace    https://ai-project-graph.jz1234da.chatgpt.site/
-// @version      0.4.0
+// @version      0.5.3
 // @description  在 Codex 侧边栏添加“项目图谱”入口
 // @match        https://chatgpt.com/*
 // @match        https://chat.openai.com/*
@@ -15,11 +15,11 @@
 (() => {
   "use strict";
 
-  const INJECTION_VERSION = "0.4.0";
-  // The resident injector fills an about:blank iframe with this local page via
-  // CDP. Loading the hosted Sites URL directly would be rejected by X-Frame-
+  const INJECTION_VERSION = "0.5.3";
+  // The resident injector fills this iframe with srcdoc through CDP. Loading
+  // the hosted Sites URL directly would be rejected by X-Frame-
   // Options and by the Sites sign-in gate in the Codex renderer.
-  const SITE_URL = "http://127.0.0.1:5173/index.html?host=codex";
+  const SITE_URL = "http://127.0.0.1:5173/codex-native.html?host=codex";
   const SENTINEL_KEY = "__aiProjectGraphCodexInjection__";
   const ENTRY_ID = "ai-project-graph-codex-entry";
   const PAGE_ID = "ai-project-graph-codex-page";
@@ -36,7 +36,7 @@
   }
   try {
     previous?.destroy?.();
-  } catch (_) {
+  } catch {
     // A previous development version may not expose destroy().
   }
 
@@ -65,7 +65,7 @@
       url.searchParams.set("host", "codex");
       url.searchParams.set("theme", hostTheme());
       return url.href;
-    } catch (_) {
+    } catch {
       return SITE_URL;
     }
   };
@@ -92,6 +92,10 @@
     style.id = STYLE_ID;
     style.setAttribute(OWNED_ATTRIBUTE, "true");
     style.textContent = `
+      html[data-ai-project-graph-open="true"] [data-testid="app-shell-header-context-menu-surface"] > :not([${OWNED_ATTRIBUTE}="true"]) {
+        visibility: hidden !important;
+        pointer-events: none !important;
+      }
       #${ENTRY_ID}[aria-current="page"] {
         background: var(--color-token-list-hover-background, color-mix(in srgb, currentColor 8%, transparent));
         color: var(--color-token-foreground, inherit);
@@ -255,9 +259,8 @@
       postHostContext();
       if (active) window.requestAnimationFrame(() => frame?.focus({ preventScroll: true }));
     });
-    // The injector replaces this blank document with the local application
-    // HTML using Page.setDocumentContent, avoiding remote iframe policies.
-    frame.src = "about:blank";
+    // Leaving src unset gives the injector a same-document frame that Codex
+    // permits it to hydrate with srcdoc.
     page.append(frame);
     document.body.append(page);
     return page;
@@ -328,9 +331,64 @@
     postHostContext();
   };
 
+  // Native routing protocol follows dashi-taskboard's documented integration.
+  // No React patching, private chunks, or replacement chat composer.
+  const nativeFetch = (path, body) => new Promise((resolve, reject) => {
+    const bridge = window.electronBridge;
+    if (!bridge?.sendMessageFromView) { reject(new Error("当前 Codex 没有原生项目桥接能力")); return; }
+    const requestId = `project-graph-${crypto.randomUUID()}`;
+    const cleanup = () => { clearTimeout(timer); window.removeEventListener("message", receive); };
+    const receive = (event) => {
+      const value = event.data;
+      if (value?.type !== "fetch-response" || value.requestId !== requestId) return;
+      cleanup();
+      if (value.status < 200 || value.status >= 300) { reject(new Error("Codex 原生项目读取失败")); return; }
+      try { resolve(JSON.parse(value.bodyJsonString || "null")); } catch (error) { reject(error); }
+    };
+    const timer = setTimeout(() => { cleanup(); reject(new Error("Codex 原生项目读取超时")); }, 3000);
+    window.addEventListener("message", receive);
+    try { bridge.sendMessageFromView({ type: "fetch", requestId, method: "POST", url: `vscode://codex/${path}`, body: JSON.stringify(body) }); }
+    catch (error) { cleanup(); reject(error); }
+  });
+  const nativeAction = async (action, payload) => {
+    const bridge = window.electronBridge;
+    if (!bridge?.sendMessageFromView) throw new Error("请在 Codex 桌面内使用原生对话");
+    if (action === "open") {
+      if (typeof payload.threadId !== "string" || !/^[a-zA-Z0-9_-]+$/.test(payload.threadId)) throw new Error("对话 ID 无效");
+      const row = [...document.querySelectorAll("[data-app-action-sidebar-thread-id]")].find(el => el.getAttribute("data-app-action-sidebar-thread-id") === payload.threadId);
+      closePage();
+      if (row) row.click();
+      else window.postMessage({ type: "navigate-to-route", path: `/local/${encodeURIComponent(payload.threadId)}` }, window.location.origin);
+      return;
+    }
+    if (action !== "new") throw new Error("未知原生操作");
+    const local = (await nativeFetch("get-global-state", { key: "local-projects" }))?.value;
+    const target = local?.[payload.project?.id];
+    if (!target?.rootPaths?.includes(payload.project.path)) throw new Error("Codex 中没有这个项目，请刷新项目列表");
+    if (typeof payload.instruction !== "string" || !payload.instruction.trim()) throw new Error("对话提示为空");
+    bridge.sendMessageFromView({ type: "electron-add-new-workspace-root-option", root: payload.project.path });
+    const deadline = Date.now() + 7000;
+    let ready = false;
+    while (Date.now() < deadline) {
+      const selected = (await nativeFetch("get-global-state", { key: "selected-project" }))?.value;
+      if (selected?.projectId === payload.project.id) { ready = true; break; }
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    if (!ready) throw new Error("Codex 未确认项目切换，未创建对话");
+    closePage();
+    window.postMessage({ type: "navigate-to-route", path: "/", state: { focusComposerNonce: crypto.randomUUID(), prefillPrompt: payload.instruction } }, window.location.origin);
+  };
   const onFrameMessage = (event) => {
     if (!frame || event.source !== frame.contentWindow) return;
     if (event.data?.type === "ai-project-graph:frame-ready") postHostContext();
+    if (event.data?.type === "ai-project-graph:native") {
+      const { requestId, action, payload } = event.data;
+      nativeAction(action, payload || {}).then(() => {
+        frame?.contentWindow?.postMessage({ type: "ai-project-graph:native-result", requestId }, "*");
+      }).catch(error => {
+        frame?.contentWindow?.postMessage({ type: "ai-project-graph:native-result", requestId, error: error.message }, "*");
+      });
+    }
     if (event.data?.type === "ai-project-graph:open-conversation") {
       window.dispatchEvent(new CustomEvent("ai-project-graph:open-conversation", {
         detail: event.data.conversation,
@@ -344,6 +402,9 @@
     observer?.disconnect();
     document.removeEventListener("click", onDocumentClick, true);
     window.removeEventListener("message", onFrameMessage);
+    document.documentElement.removeAttribute("data-ai-project-graph-open");
+    document.removeEventListener("keydown", onKeydown);
+    window.matchMedia?.("(prefers-color-scheme: dark)").removeEventListener("change", refresh);
     document.querySelectorAll(`[${OWNED_ATTRIBUTE}="true"]`).forEach((node) => node.remove());
     page?.remove();
     document.getElementById(STYLE_ID)?.remove();
@@ -354,9 +415,10 @@
   window[SENTINEL_KEY] = api;
   window.addEventListener("message", onFrameMessage);
   document.addEventListener("click", onDocumentClick, true);
-  document.addEventListener("keydown", (event) => {
+  function onKeydown(event) {
     if (event.key === "Escape" && active) closePage();
-  });
+  }
+  document.addEventListener("keydown", onKeydown);
   window.matchMedia?.("(prefers-color-scheme: dark)").addEventListener("change", refresh);
 
   const mount = () => {
